@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Risk Scoring</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .risk-bar-track { background:var(--ink); border-radius:4px; height:8px; overflow:hidden; margin-top:6px; }
+  .risk-bar-fill { height:100%; border-radius:4px; }
+  .risk-row { padding:12px 0; border-bottom:1px solid var(--border); }
+  .risk-row:last-child { border-bottom:none; }
+  .risk-entity { font-family:var(--mono); font-size:13px; font-weight:700; }
+  .risk-score { font-family:var(--mono); font-size:12px; color:var(--text-dim); }
+  .risk-breakdown span { margin-right:10px; font-family:var(--mono); font-size:10.5px; }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">
+      Risk Scoring
+      <span>
+        <label style="font-family:var(--mono);font-size:10px;color:var(--text-dim);text-transform:uppercase;">Window</label>
+        <select id="f-days" onchange="loadRisk();" style="background:var(--ink);border:1px solid var(--border);color:var(--text);font-family:var(--sans);font-size:12px;padding:5px 8px;border-radius:6px;">
+          <option value="1">Last 24 hours</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+      </span>
+    </div>
+    <div class="panel-sub">Score = sum of severity-weighted alerts (Critical×10, High×5, Medium×2, Low×1) in the selected window. Simple and explainable on purpose - a transparent score you can defend beats a black-box one for a portfolio piece.</div>
+
+    <div class="grid-2">
+      <div>
+        <div class="panel-title" style="font-size:11px;">Riskiest Users</div>
+        <div id="risk-users"></div>
+      </div>
+      <div>
+        <div class="panel-title" style="font-size:11px;">Riskiest Hosts</div>
+        <div id="risk-hosts"></div>
+      </div>
+    </div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Risk Scoring</footer>
+
+<script>
+function riskColor(score){
+  if (score >= 30) return 'var(--accent)';
+  if (score >= 15) return 'var(--accent)';
+  if (score >= 5) return 'var(--warn)';
+  return 'var(--info)';
+}
+
+function renderList(containerId, items, linkType){
+  const container = document.getElementById(containerId);
+  if (items.length === 0){ container.innerHTML = '<div class="empty">No alerts in this window.</div>'; return; }
+  const maxScore = Math.max(...items.map(i => i.score));
+  let html = '';
+  for (const item of items){
+    const color = riskColor(item.score);
+    const pct = maxScore > 0 ? (item.score / maxScore * 100) : 0;
+    const breakdown = Object.entries(item.breakdown).map(([sev,c]) => `<span style="color:var(--text-dim);">${escapeHtml(sev)}: ${c}</span>`).join('');
+    html += `<div class="risk-row">
+      <div style="display:flex;justify-content:space-between;">
+        <a class="risk-entity" href="/timeline?type=${linkType}&value=${encodeURIComponent(item.entity)}" style="color:var(--text);text-decoration:none;">${escapeHtml(item.entity)}</a>
+        <span class="risk-score" style="color:${color};">${item.score}</span>
+      </div>
+      <div class="risk-bar-track"><div class="risk-bar-fill" style="width:${pct}%; background:${color};"></div></div>
+      <div class="risk-breakdown" style="margin-top:6px;">${breakdown}</div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+async function loadRisk(){
+  const days = document.getElementById('f-days').value;
+  const r = await fetch('/api/risk?days=' + days);
+  const data = await r.json();
+  renderList('risk-users', data.users, 'user');
+  renderList('risk-hosts', data.hosts, 'host');
+}
+
+loadRisk();
+</script>
+</body>
+</html>

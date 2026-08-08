@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — {{ case_number }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .status-pill.status-Open { background:rgba(76,141,255,.13); color:var(--info); border:1px solid rgba(76,141,255,.35); }
+  .status-pill.status-In-Progress { background:rgba(255,165,61,.13); color:var(--warn); border:1px solid rgba(255,165,61,.35); }
+  .status-pill.status-Resolved { background:rgba(53,226,138,.13); color:var(--signal); border:1px solid rgba(53,226,138,.35); }
+  .status-pill.status-Closed { background:rgba(124,135,152,.13); color:var(--text-dim); border:1px solid var(--border); }
+  .meta-select {
+    background:var(--ink); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:12px; padding:6px 9px; border-radius:var(--radius);
+  }
+  .note-item, .evidence-item {
+    border-bottom:1px solid var(--border); padding:10px 0; font-family:var(--mono); font-size:12px;
+  }
+  .note-item:last-child, .evidence-item:last-child { border-bottom:none; }
+  .note-meta, .evidence-meta { color:var(--text-dim); font-size:10.5px; margin-bottom:4px; }
+  .evidence-type-tag {
+    display:inline-block; padding:1px 6px; border-radius:var(--radius); font-size:9.5px;
+    background:rgba(76,141,255,.1); color:var(--info); border:1px solid rgba(76,141,255,.3); margin-right:6px;
+  }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">
+      <span><a href="/cases" style="color:var(--text-dim); text-decoration:none;">Cases</a> / {{ case_number }}</span>
+    </div>
+    <div id="case-header">Loading...</div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="panel-title">Evidence <span class="count" id="evidence-count"></span></div>
+      <div id="evidence-list"></div>
+      {% if current_role in ('Analyst', 'Admin') %}
+      <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+        <label class="field-label">Add evidence</label>
+        <div style="display:flex; gap:6px; margin-bottom:6px;">
+          <select id="ev-type" class="meta-select">
+            <option value="note">Free-text note</option>
+            <option value="alert">Alert (by ID)</option>
+            <option value="log">Log (by ID)</option>
+          </select>
+          <input type="text" id="ev-reference" placeholder="Alert/Log ID (if applicable)" class="meta-select" style="flex:1;">
+        </div>
+        <textarea id="ev-description" rows="2" placeholder="Description of this evidence..." class="meta-select" style="width:100%; resize:vertical;"></textarea>
+        <button class="btn btn-primary" style="margin-top:6px;" onclick="addEvidence()">Add Evidence</button>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <div class="panel-title">Investigation Notes <span class="count" id="notes-count"></span></div>
+      <div id="notes-list"></div>
+      {% if current_role in ('Analyst', 'Admin') %}
+      <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px;">
+        <label class="field-label">Add note</label>
+        <textarea id="note-text" rows="2" placeholder="What did you find? What's next?" class="meta-select" style="width:100%; resize:vertical;"></textarea>
+        <button class="btn btn-primary" style="margin-top:6px;" onclick="addNote()">Add Note</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Resolution</div>
+    {% if current_role in ('Analyst', 'Admin') %}
+    <textarea id="resolution-text" rows="3" placeholder="Root cause, actions taken, and outcome - filled in when closing the case." class="meta-select" style="width:100%; resize:vertical;"></textarea>
+    <button class="btn btn-primary" style="margin-top:8px;" onclick="saveResolution()">Save Resolution</button>
+    <span id="resolution-saved" style="display:none; color:var(--signal); font-family:var(--mono); font-size:11px; margin-left:10px;">Saved.</span>
+    {% else %}
+    <div id="resolution-readonly" class="panel-sub">No resolution recorded yet.</div>
+    {% endif %}
+  </div>
+
+</main>
+<footer>Mini SIEM · {{ case_number }}</footer>
+
+<script>
+const CASE_NUMBER = "{{ case_number }}";
+const CAN_EDIT = {{ 'true' if current_role in ('Analyst', 'Admin') else 'false' }};
+let CURRENT_CASE = null;
+
+function fmtTime(iso){
+  if (!iso) return '-';
+  const d = new Date(iso + 'Z');
+  return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+function statusClass(s){ return s.replace(' ', '-'); }
+
+async function loadAssignableUsers(currentAssigned){
+  const r = await fetch('/api/cases/assignable-users');
+  const users = await r.json();
+  const sel = document.getElementById('assign-select');
+  if (!sel) return;
+  const unassigned = document.createElement('option');
+  unassigned.value = ''; unassigned.textContent = 'Unassigned';
+  sel.appendChild(unassigned);
+  for (const u of users){
+    const opt = document.createElement('option');
+    opt.value = u; opt.textContent = u;
+    if (u === currentAssigned) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+async function updateField(field, value){
+  const r = await fetch(`/api/cases/${CASE_NUMBER}/update`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({[field]: value}),
+  });
+  if (!r.ok){ const d = await r.json(); alert(d.error || 'Update failed'); }
+  await loadCase();
+}
+
+async function saveResolution(){
+  const text = document.getElementById('resolution-text').value;
+  await updateField('resolution', text);
+  const saved = document.getElementById('resolution-saved');
+  saved.style.display = 'inline';
+  setTimeout(() => saved.style.display = 'none', 2000);
+}
+
+async function addNote(){
+  const text = document.getElementById('note-text').value.trim();
+  if (!text) return;
+  const r = await fetch(`/api/cases/${CASE_NUMBER}/notes`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({note_text: text}),
+  });
+  if (r.ok){ document.getElementById('note-text').value = ''; await loadCase(); }
+}
+
+async function addEvidence(){
+  const evidence_type = document.getElementById('ev-type').value;
+  const reference_id = document.getElementById('ev-reference').value.trim();
+  const description = document.getElementById('ev-description').value.trim();
+  if (!description){ alert('Description is required.'); return; }
+  const r = await fetch(`/api/cases/${CASE_NUMBER}/evidence`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({evidence_type, reference_id: reference_id || null, description}),
+  });
+  const data = await r.json();
+  if (!r.ok){ alert(data.error || 'Failed to add evidence.'); return; }
+  document.getElementById('ev-reference').value = '';
+  document.getElementById('ev-description').value = '';
+  await loadCase();
+}
+
+function renderHeader(c){
+  const statusOptions = ['Open','In Progress','Resolved','Closed'].map(s =>
+    `<option value="${s}" ${c.status===s?'selected':''}>${s}</option>`).join('');
+  const priorityOptions = ['Low','Medium','High','Critical'].map(p =>
+    `<option value="${p}" ${c.priority===p?'selected':''}>${p}</option>`).join('');
+
+  document.getElementById('case-header').innerHTML = `
+    <h2 style="margin:0 0 4px 0; font-family:var(--mono); font-size:16px;">${escapeHtml(c.title)}</h2>
+    <div class="panel-sub" style="margin-bottom:12px;">${c.description ? escapeHtml(c.description) : 'No description.'}</div>
+    <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:center; font-family:var(--mono); font-size:12px;">
+      <div>
+        <div class="field-label">Status</div>
+        ${CAN_EDIT ? `<select class="meta-select" onchange="updateField('status', this.value)">${statusOptions}</select>`
+                   : `<span class="status-pill status-${statusClass(c.status)}">${escapeHtml(c.status)}</span>`}
+      </div>
+      <div>
+        <div class="field-label">Priority</div>
+        ${CAN_EDIT ? `<select class="meta-select" onchange="updateField('priority', this.value)">${priorityOptions}</select>`
+                   : `<span class="sev sev-${c.priority}">${escapeHtml(c.priority)}</span>`}
+      </div>
+      <div>
+        <div class="field-label">Assigned</div>
+        ${CAN_EDIT ? `<select class="meta-select" id="assign-select" onchange="updateField('assigned_to', this.value)"></select>`
+                   : `<span>${escapeHtml(c.assigned_to) || '-'}</span>`}
+      </div>
+      <div><div class="field-label">Created</div><span>${fmtTime(c.created_at)} by ${escapeHtml(c.created_by)||'-'}</span></div>
+      <div><div class="field-label">Updated</div><span>${fmtTime(c.updated_at)}</span></div>
+      ${c.resolved_at ? `<div><div class="field-label">Resolved</div><span>${fmtTime(c.resolved_at)}</span></div>` : ''}
+    </div>
+  `;
+  if (CAN_EDIT) loadAssignableUsers(c.assigned_to);
+}
+
+async function loadCase(){
+  const r = await fetch(`/api/cases/${CASE_NUMBER}`);
+  if (!r.ok){
+    document.getElementById('case-header').innerHTML = '<div class="empty">Case not found.</div>';
+    return;
+  }
+  const data = await r.json();
+  CURRENT_CASE = data.case;
+  renderHeader(data.case);
+
+  document.getElementById('evidence-count').textContent = data.evidence.length;
+  const evContainer = document.getElementById('evidence-list');
+  evContainer.innerHTML = data.evidence.length === 0
+    ? '<div class="empty">No evidence attached yet.</div>'
+    : data.evidence.map(e => `
+        <div class="evidence-item">
+          <div class="evidence-meta"><span class="evidence-type-tag">${escapeHtml(e.evidence_type)}</span>${fmtTime(e.added_at)} · ${escapeHtml(e.added_by)||'-'}</div>
+          <div>${escapeHtml(e.description)}</div>
+        </div>`).join('');
+
+  document.getElementById('notes-count').textContent = data.notes.length;
+  const notesContainer = document.getElementById('notes-list');
+  notesContainer.innerHTML = data.notes.length === 0
+    ? '<div class="empty">No notes yet.</div>'
+    : data.notes.map(n => `
+        <div class="note-item">
+          <div class="note-meta">${fmtTime(n.created_at)} · ${escapeHtml(n.author)||'-'}</div>
+          <div>${escapeHtml(n.note_text)}</div>
+        </div>`).join('');
+
+  if (CAN_EDIT){
+    const resBox = document.getElementById('resolution-text');
+    if (resBox && document.activeElement !== resBox) resBox.value = data.case.resolution || '';
+  } else {
+    const ro = document.getElementById('resolution-readonly');
+    if (ro) ro.textContent = data.case.resolution || 'No resolution recorded yet.';
+  }
+}
+
+loadCase();
+</script>
+</body>
+</html>

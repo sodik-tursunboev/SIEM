@@ -1,0 +1,236 @@
+/* Mini SIEM design system v3 - "enterprise SOC tool" direction.
+   Evolved deliberately away from the earlier phosphor-green terminal
+   aesthetic toward something closer to Splunk/Elastic Security/Sentinel:
+   calm dark neutrals for almost everything, ONE restrained accent color
+   reserved specifically for critical/high severity, monospace used
+   surgically for data (IDs, timestamps, IPs, hostnames) rather than
+   everywhere, and a left sidebar nav (matching real SOC tool layout)
+   instead of a top bar. */
+
+:root{
+  --ink: #0B0E13;
+  --surface: #11141B;
+  --surface-raised: #161A22;
+  --border: #1E232D;
+  --text: #E6E9EF;
+  --text-muted: #7A8296;
+  --text-dim: #545C6E;
+  --accent: #E5484D;      /* the ONE alert color - critical/high only */
+  --signal: #3FB88A;      /* active/enabled/low-severity, not the brand color */
+  --warn: #D9A441;        /* medium severity only */
+  --info: #5B8DEF;        /* links, MITRE tags, focus rings */
+  --mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', 'Inter', sans-serif;
+  --radius: 4px;
+  --sidebar-w: 232px;
+}
+[data-theme="light"]{
+  --ink: #F3F4F6;
+  --surface: #FFFFFF;
+  --surface-raised: #FAFBFC;
+  --border: #DEE2E8;
+  --text: #1A1D24;
+  --text-muted: #5B6472;
+  --text-dim: #8892A0;
+  --accent: #C6303A;
+  --signal: #1C8F63;
+  --warn: #A66A0E;
+  --info: #2F5FC7;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin:0; background-color:var(--ink); color:var(--text);
+  font-family:var(--sans); min-height:100vh; font-size:14px;
+}
+
+/* Visible keyboard focus everywhere - accessibility requirement, and a
+   real enterprise tool needs to be usable without a mouse. */
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--info); outline-offset: 2px;
+}
+
+/* ---- Sidebar ---- */
+.sidebar {
+  position:fixed; top:0; left:0; bottom:0; width:var(--sidebar-w);
+  background:var(--surface); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; z-index:100;
+}
+.sidebar-brand {
+  display:flex; align-items:center; gap:9px; padding:18px 18px 14px 18px;
+  text-decoration:none; border-bottom:1px solid var(--border);
+}
+.brand-dot { width:7px; height:7px; border-radius:50%; background:var(--signal); box-shadow:0 0 6px var(--signal); }
+.brand-name { font-family:var(--sans); font-size:13px; font-weight:700; letter-spacing:.06em; color:var(--text); }
+
+.sidebar-search { padding:12px 14px; border-bottom:1px solid var(--border); }
+.sidebar-search .global-search {
+  width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text);
+  font-family:var(--sans); font-size:12.5px; padding:7px 10px; border-radius:var(--radius);
+}
+.sidebar-search .global-search:focus { border-color:var(--info); }
+.sidebar-search .global-search::placeholder { color:var(--text-dim); }
+
+.sidebar-nav { flex:1; overflow-y:auto; padding:10px 0; }
+.nav-group { margin-bottom:4px; }
+.nav-group-label {
+  font-family:var(--sans); font-size:10px; font-weight:600; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--text-dim); padding:10px 18px 4px 18px;
+}
+.sidebar-nav a {
+  display:block; font-family:var(--sans); font-size:13px; font-weight:500; text-decoration:none;
+  color:var(--text-muted); padding:6px 18px; border-left:2px solid transparent;
+  transition:background .12s, color .12s, border-color .12s;
+}
+.sidebar-nav a:hover { color:var(--text); background:var(--surface-raised); }
+.sidebar-nav a.active { color:var(--text); background:var(--surface-raised); border-left-color:var(--info); font-weight:600; }
+
+/* Signature element: live ingestion-rate sparkline, genuinely data-driven */
+.sidebar-pulse { padding:12px 18px; border-top:1px solid var(--border); }
+.pulse-label { font-family:var(--mono); font-size:9.5px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.08em; margin-bottom:6px; }
+.pulse-bars { display:flex; align-items:flex-end; gap:2px; height:28px; }
+.pulse-bar { flex:1; background:var(--signal); opacity:.75; border-radius:1px; min-height:2px; transition:height .3s ease; }
+
+.sidebar-footer {
+  padding:12px 14px 16px 14px; border-top:1px solid var(--border);
+  display:flex; flex-direction:column; gap:8px;
+}
+.sidebar-footer .icon-btn { align-self:flex-start; }
+.user-badge { font-family:var(--sans); font-size:11.5px; color:var(--text-muted); text-decoration:none; }
+.user-badge:hover { color:var(--text); }
+.user-badge b { color:var(--text); }
+
+.icon-btn {
+  background:var(--ink); border:1px solid var(--border); color:var(--text-muted);
+  cursor:pointer; border-radius:var(--radius); padding:5px 9px; font-size:13px;
+}
+.icon-btn:hover { color:var(--text); border-color:var(--info); }
+
+/* ---- Main content area ---- */
+main.page { margin-left:var(--sidebar-w); padding:24px 28px; max-width:1400px; }
+
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:16px 18px; margin-bottom:18px;
+}
+.panel-title {
+  font-family:var(--sans); font-size:12.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+  color:var(--text-muted); margin:0 0 12px 0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;
+}
+.panel-title span.count { font-family:var(--mono); color:var(--info); text-transform:none; letter-spacing:0; font-weight:600; }
+.panel-sub { font-family:var(--sans); font-size:12px; color:var(--text-muted); margin:-6px 0 12px 0; line-height:1.6; }
+
+.filterbar {
+  display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+  margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);
+}
+.filterbar select, .filterbar input[type=text], .filterbar input[type=datetime-local], .filterbar input[type=number] {
+  background:var(--ink); border:1px solid var(--border); color:var(--text);
+  font-family:var(--sans); font-size:12px; padding:6px 9px; border-radius:var(--radius);
+}
+.filterbar select:focus, .filterbar input:focus { border-color:var(--info); }
+.filterbar input[type=text] { min-width:170px; }
+.filterbar label { font-family:var(--sans); font-size:10px; color:var(--text-dim); text-transform:uppercase; margin-right:-4px; font-weight:600; }
+
+.field-label { font-family:var(--sans); font-size:10.5px; color:var(--text-dim); text-transform:uppercase; display:block; margin-bottom:6px; font-weight:600; }
+.stack-form input[type=text], .stack-form input[type=password], .stack-form input[type=number] {
+  width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text);
+  font-family:var(--sans); font-size:13px; padding:8px 10px; border-radius:var(--radius);
+}
+.stack-form input[type=text]:focus, .stack-form input[type=password]:focus, .stack-form input[type=number]:focus { border-color:var(--info); }
+
+.btn {
+  font-family:var(--sans); font-size:12px; font-weight:600; cursor:pointer;
+  border-radius:var(--radius); padding:6px 13px; border:1px solid var(--border);
+  background:var(--surface-raised); color:var(--text); text-decoration:none; display:inline-block;
+  letter-spacing:.01em; transition:border-color .12s, color .12s;
+}
+.btn:hover { border-color:var(--info); color:var(--info); }
+.btn-reset { color:var(--text-muted); }
+.btn-primary { background:var(--info); border-color:var(--info); color:#08101F; font-weight:700; }
+.btn-primary:hover { color:#08101F; opacity:.88; border-color:var(--info); }
+.btn-danger { color:var(--accent); }
+.btn-danger:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ---- Dense tables with real severity hierarchy: colored left border +
+   bold colored text + consistent column position, not just a dot ---- */
+table { width:100%; border-collapse:collapse; font-family:var(--sans); font-size:12.5px; }
+th { text-align:left; color:var(--text-dim); font-weight:600; padding:6px 8px; border-bottom:1px solid var(--border); font-size:10px; letter-spacing:.06em; text-transform:uppercase;}
+td { padding:5px 8px; border-bottom:1px solid var(--border); color:var(--text); vertical-align:middle; line-height:1.4; }
+tr { border-left:3px solid transparent; }
+tr:hover td { background:var(--surface-raised); }
+
+/* Data-specific cells (IPs, hostnames, timestamps, IDs) get monospace -
+   this is the deliberate mono/sans split: data reads as mono, everything
+   else (labels, prose, nav, buttons) reads as sans. */
+td.mono, .mono-cell, td time { font-family:var(--mono); font-size:12px; }
+
+.sev { padding:2px 8px; border-radius:var(--radius); font-size:10.5px; font-weight:700; letter-spacing:.02em; white-space:nowrap; font-family:var(--sans); }
+.sev-Critical { background:rgba(229,72,77,.12); color:var(--accent); border:1px solid rgba(229,72,77,.35); }
+.sev-High { background:rgba(229,72,77,.08); color:var(--accent); border:1px solid rgba(229,72,77,.22); opacity:.85; }
+.sev-Medium { background:rgba(217,164,65,.12); color:var(--warn); border:1px solid rgba(217,164,65,.32); }
+.sev-Low { background:rgba(91,141,239,.1); color:var(--info); border:1px solid rgba(91,141,239,.28); }
+.sev-Varies { background:rgba(122,130,150,.12); color:var(--text-muted); border:1px solid var(--border); }
+
+/* Row-level severity indicator via left border - the "position" cue */
+tr.row-Critical, tr.row-High { border-left-color:var(--accent); }
+tr.row-Medium { border-left-color:var(--warn); }
+tr.row-Low { border-left-color:var(--info); }
+
+.mitre-tag {
+  font-family:var(--mono); font-size:10.5px; color:var(--info);
+  background:rgba(91,141,239,.1); border:1px solid rgba(91,141,239,.3);
+  padding:1px 6px; border-radius:var(--radius); white-space:nowrap;
+}
+
+.status-select {
+  background:var(--ink); border:1px solid var(--border); color:var(--text-muted);
+  font-family:var(--sans); font-size:11px; padding:3px 6px; border-radius:var(--radius); cursor:pointer;
+}
+.status-select.st-New { color:var(--info); }
+.status-select.st-Acknowledged { color:var(--warn); }
+.status-select.st-Resolved { color:var(--signal); }
+
+.badge {
+  display:inline-block; padding:2px 8px; border-radius:var(--radius); font-size:10.5px;
+  font-weight:700; font-family:var(--sans); letter-spacing:.02em;
+}
+.badge-Admin { background:rgba(229,72,77,.12); color:var(--accent); }
+.badge-Analyst { background:rgba(217,164,65,.12); color:var(--warn); }
+.badge-Viewer { background:rgba(91,141,239,.1); color:var(--info); }
+.badge-Low { background:rgba(91,141,239,.1); color:var(--info); }
+.badge-Medium { background:rgba(217,164,65,.12); color:var(--warn); }
+.badge-High { background:rgba(229,72,77,.08); color:var(--accent); }
+.badge-Critical { background:rgba(229,72,77,.12); color:var(--accent); }
+
+.empty { color:var(--text-dim); font-family:var(--sans); font-size:12.5px; padding:20px 4px; text-align:center; }
+.table-wrap { overflow-x:auto; }
+.load-more-wrap { text-align:center; margin-top:12px; }
+
+.flash { padding:10px 14px; border-radius:var(--radius); font-size:13px; margin-bottom:16px; font-family:var(--sans); }
+.flash-error { background:rgba(229,72,77,.08); border:1px solid rgba(229,72,77,.35); color:var(--accent); }
+.flash-ok { background:rgba(63,184,138,.08); border:1px solid rgba(63,184,138,.35); color:var(--signal); }
+
+footer { text-align:center; padding:22px; color:var(--text-dim); font-family:var(--sans); font-size:11px; letter-spacing:.02em; margin-left:var(--sidebar-w); }
+
+.grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid-3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
+
+@media (max-width: 900px){
+  .grid-2, .grid-3 { grid-template-columns:1fr; }
+  .sidebar { transform:translateX(-100%); transition:transform .2s; }
+  .sidebar.open { transform:translateX(0); }
+  main.page, footer { margin-left:0; }
+  .mobile-menu-toggle { display:flex !important; }
+}
+
+.mobile-menu-toggle {
+  display:none; position:fixed; top:14px; left:14px; z-index:200;
+  width:36px; height:36px; align-items:center; justify-content:center;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  color:var(--text); cursor:pointer; font-size:16px;
+}

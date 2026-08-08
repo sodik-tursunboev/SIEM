@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — IOC Watchlist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">IOC Watchlist</div>
+    <div class="panel-sub">Add a known-bad IP, domain fragment, username, or hash. Every new event is checked against this list automatically - a match becomes a Critical alert immediately (see rules.py: rule_ioc_match).</div>
+    <div class="filterbar">
+      <label>Indicator</label>
+      <input type="text" id="new-indicator" placeholder="e.g. 185.220.101.7">
+      <label>Type</label>
+      <select id="new-type">
+        <option value="ip">IP</option>
+        <option value="domain">Domain</option>
+        <option value="user">Username</option>
+        <option value="hash">File hash</option>
+      </select>
+      <label>Description</label>
+      <input type="text" id="new-desc" placeholder="why is this on the list?" style="min-width:220px;">
+      <button class="btn btn-primary" onclick="addIoc();">Add to watchlist</button>
+    </div>
+    <div class="table-wrap" id="ioc-table"></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Search Historical Logs for an Indicator</div>
+    <div class="panel-sub">Didn't have this on the watchlist when it happened? Search anyway - checks IP, user, host, and message text across every log ever collected.</div>
+    <div class="filterbar">
+      <input type="text" id="search-indicator" placeholder="IP, username, hostname, or text fragment..." style="min-width:280px;">
+      <button class="btn btn-primary" onclick="searchIndicator();">Search history</button>
+    </div>
+    <div class="table-wrap" id="search-results"></div>
+  </div>
+
+</main>
+<footer>Mini SIEM · IOC Watchlist</footer>
+
+<script>
+function fmtTime(iso){ const d = new Date(iso + 'Z'); return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'}); }
+
+async function loadIocs(){
+  const r = await fetch('/api/iocs');
+  const iocs = await r.json();
+  const container = document.getElementById('ioc-table');
+  if (iocs.length === 0){ container.innerHTML = '<div class="empty">Watchlist is empty. Add an indicator above.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Indicator</th><th>Type</th><th>Description</th><th>Added By</th><th>Added</th><th></th></tr></thead><tbody>';
+  for (const i of iocs){
+    html += `<tr><td>${escapeHtml(i.indicator)}</td><td><span class="badge badge-Viewer">${escapeHtml(i.ioc_type)}</span></td>
+      <td>${escapeHtml(i.description)||'-'}</td><td>${escapeHtml(i.added_by)||'-'}</td><td>${fmtTime(i.created_at)}</td>
+      <td><button class="btn btn-danger" onclick="deleteIoc(${i.id})">Remove</button></td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function addIoc(){
+  const indicator = document.getElementById('new-indicator').value.trim();
+  const ioc_type = document.getElementById('new-type').value;
+  const description = document.getElementById('new-desc').value.trim();
+  if (!indicator) return;
+  await fetch('/api/iocs', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({indicator, ioc_type, description}),
+  });
+  document.getElementById('new-indicator').value = '';
+  document.getElementById('new-desc').value = '';
+  loadIocs();
+}
+
+async function deleteIoc(id){
+  await fetch(`/api/iocs/${id}/delete`, {method: 'POST'});
+  loadIocs();
+}
+
+async function searchIndicator(){
+  const q = document.getElementById('search-indicator').value.trim();
+  const container = document.getElementById('search-results');
+  if (!q){ container.innerHTML = ''; return; }
+  const r = await fetch('/api/iocs/search?q=' + encodeURIComponent(q));
+  const data = await r.json();
+  if (data.results.length === 0){ container.innerHTML = '<div class="empty">No historical matches for that indicator.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Time</th><th>Source</th><th>Event</th><th>User</th><th>Host</th><th>Source IP</th><th>Message</th></tr></thead><tbody>';
+  for (const l of data.results){
+    html += `<tr><td>${fmtTime(l.timestamp)}</td><td>${escapeHtml(l.source)}</td><td>${escapeHtml(l.event_type)}</td><td>${escapeHtml(l.user)||'-'}</td><td>${escapeHtml(l.host)||'-'}</td><td>${escapeHtml(l.source_ip)||'-'}</td><td style="max-width:280px;white-space:normal;">${escapeHtml(l.message)||''}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+loadIocs();
+</script>
+</body>
+</html>
