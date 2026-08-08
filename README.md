@@ -5,11 +5,11 @@ A full detection-and-response platform built from scratch in Python: multi-sourc
 > Built as a hands-on portfolio project. Every feature was tested against real attack simulations before being considered done — including a real, exploitable stored XSS that was found and fixed by actually attempting the attack, not just reviewing the code, and detection rules validated against real Atomic Red Team test runs.
 
 ## Screenshots
+<img width="1500" height="2368" alt="IMG_8254" src="https://github.com/user-attachments/assets/c0cb8a6a-150e-435a-a5f2-b04d966a406d" />
+<img width="1500" height="1000" alt="IMG_8255" src="https://github.com/user-attachments/assets/7eb0bb19-3841-4997-9033-ee99e18a9048" />
+<img width="1500" height="1338" alt="IMG_8256" src="https://github.com/user-attachments/assets/d45458dc-086d-48ae-a5b9-69b10806ae31" />
+<img width="1500" height="1000" alt="IMG_8257" src="https://github.com/user-attachments/assets/9823f128-1e7c-49ab-96e9-3263c786a3ea" />
 
-<img width="1500" height="1000" alt="IMG_8257" src="https://github.com/user-attachments/assets/24c3894b-1c9d-4735-afbe-dc25a86ac148" />
-<img width="1500" height="1338" alt="IMG_8256" src="https://github.com/user-attachments/assets/74847ff0-fa59-4869-b507-c1ae0ab922fd" />
-<img width="1500" height="1000" alt="IMG_8255" src="https://github.com/user-attachments/assets/7d4a4f45-82ea-426d-8136-2a015c763cfe" />
-<img width="1500" height="2368" alt="IMG_8254" src="https://github.com/user-attachments/assets/0e7bb60a-f278-4766-b01e-0bb15243ed6b" />
 
 
 ## What it does
