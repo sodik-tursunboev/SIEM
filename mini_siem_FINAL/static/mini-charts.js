@@ -10,7 +10,7 @@ function miniLineChart(container, labels, values, opts){
   const textColor = opts.textColor || '#7A8296';
   const w = container.clientWidth || 600;
   const h = container.clientHeight || 200;
-  const padL = 30, padB = 20, padT = 10, padR = 10;
+  const padL = 36, padB = 26, padT = 14, padR = 14;
   const plotW = w - padL - padR, plotH = h - padT - padB;
 
   const maxVal = Math.max(1, ...values);
@@ -28,26 +28,26 @@ function miniLineChart(container, labels, values, opts){
     ` L${padL},${(padT + plotH).toFixed(1)} Z`;
 
   // Gridlines at 0, mid, max
-  const gridLines = [0, 0.5, 1].map(f => {
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(f => {
     const y = padT + plotH - f * plotH;
     const val = Math.round(maxVal * f);
     return `<line x1="${padL}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="${gridColor}" stroke-width="1"/>
-            <text x="${padL - 6}" y="${y + 3}" text-anchor="end" font-size="9" font-family="IBM Plex Mono" fill="${textColor}">${val}</text>`;
+            <text x="${padL - 8}" y="${y + 4}" text-anchor="end" font-size="12" font-family="IBM Plex Mono" fill="${textColor}">${val}</text>`;
   }).join('');
 
   // A handful of x-axis labels (avoid crowding if there are many points)
-  const labelStep = Math.max(1, Math.ceil(labels.length / 6));
+  const labelStep = Math.max(1, Math.ceil(labels.length / 8));
   const xLabels = labels.map((lab, i) => {
     if (i % labelStep !== 0) return '';
     const x = padL + i * stepX;
-    return `<text x="${x}" y="${h - 4}" text-anchor="middle" font-size="9" font-family="IBM Plex Mono" fill="${textColor}">${lab}</text>`;
+    return `<text x="${x}" y="${h - 4}" text-anchor="middle" font-size="12" font-family="IBM Plex Mono" fill="${textColor}">${lab}</text>`;
   }).join('');
 
   container.innerHTML = `<svg width="100%" height="100%" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block;">
     ${gridLines}
-    <path d="${areaPath}" fill="${color}" opacity="0.12" stroke="none"/>
-    <path d="${linePath}" fill="none" stroke="${color}" stroke-width="2"/>
-    ${points.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="${color}"/>`).join('')}
+    <path d="${areaPath}" fill="${color}" opacity="0.14" stroke="none"/>
+    <path d="${linePath}" fill="none" stroke="${color}" stroke-width="3"/>
+    ${points.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="${color}"/>`).join('')}
     ${xLabels}
   </svg>`;
 }
@@ -83,9 +83,9 @@ function miniDonutChart(container, labels, values, colors, opts){
   }
 
   const legend = labels.map((lab, i) =>
-    `<div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
-       <span style="width:9px; height:9px; border-radius:2px; background:${colors[i]}; display:inline-block; flex-shrink:0;"></span>
-       <span style="font-family:IBM Plex Sans; font-size:11px; color:${textColor};">${lab} (${values[i] || 0})</span>
+    `<div style="display:flex; align-items:center; gap:9px; margin-bottom:10px;">
+       <span style="width:13px; height:13px; border-radius:3px; background:${colors[i]}; display:inline-block; flex-shrink:0;"></span>
+       <span style="font-family:IBM Plex Sans; font-size:14px; color:${textColor};">${lab} (${values[i] || 0})</span>
      </div>`
   ).join('');
 
