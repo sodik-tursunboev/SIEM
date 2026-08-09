@@ -1,3 +1,7 @@
+AwAAAKXYE4TzupUP4M7i/Wdqx6aKGq4iJtiTs9XgRKCEpLRigoomuA1jyvBh2KqLE8JrDcuHHbXa4Bsv3FBuddZDMXkKDE3bRja/h95fSiunIkxIIPJBAN5TNRog9LqmtkNb+w0X9aM9zFoWd67N10tzuIFk0ygshIvkO9mWvbCXmVMIDS-7108HQHI-K10820220907CCWRK52659592WCVU
+
+
+
 # Mini SIEM
 
 A full detection-and-response platform built from scratch in Python: multi-source log ingestion (Windows, Linux, Sysmon, remote forwarders), 35 correlation-based detection rules plus a Sigma engine, automatic attack-chain correlation, SOAR-style automated response, full case management, role-based access control, a real threat-hunting query language, and AI-assisted triage — with an enterprise-style redesigned UI (left sidebar nav, dense data tables, restrained severity-driven color).
