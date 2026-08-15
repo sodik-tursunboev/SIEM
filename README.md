@@ -14,6 +14,7 @@ A full detection-and-response platform built from scratch in Python: multi-sourc
 **Sentinel BAS — Detection Validation** — measured MITRE ATT&CK coverage, not a manual guess
 <img width="1910" height="870" alt="BAS" src="https://github.com/user-attachments/assets/0fea9d6c-fe80-4106-b84f-cf244b66ead9" />
 
+[Full coverage report (PDF)](Sentinel_BAS_Coverage_Report.pdf)
 
 **Attack Chain Correlation** — multi-stage attacks automatically clustered into one incident
 <img width="1902" height="878" alt="CHAINS" src="https://github.com/user-attachments/assets/4328aae5-cb5a-4591-b181-716bfa8694fe" />
