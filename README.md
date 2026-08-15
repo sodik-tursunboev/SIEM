@@ -7,7 +7,6 @@ A full detection-and-response platform built from scratch in Python: multi-sourc
 ## Screenshots
 
 **Dashboard** — live alert feed, real-time charts, MITRE-tagged alerts, AI-Summary
-<img width="1915" height="872" alt="AI-SUMMARY 24H" src="https://github.com/user-attachments/assets/cdfd1e70-4025-42a5-8781-3618b18ed77c" />
 <img width="1916" height="873" alt="DASHBOARD" src="https://github.com/user-attachments/assets/c15f440a-b827-477b-bff6-b87b4f387003" />
 
 
