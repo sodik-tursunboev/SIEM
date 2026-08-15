@@ -138,6 +138,7 @@ MESSAGE_FIELD_CANDIDATES = [
     "TaskName", "DestinationIp", "DestinationPort", "QueryName",
     "TargetUserName", "SubjectUserName", "ShareName", "RelativeTargetName",
     "GrantedAccess", "TargetImage", "SourceImage", "StartAddress",
+    "TicketEncryptionType", "TicketOptions", "MemberName", "PrivilegeList",
 ]
 
 _NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
@@ -246,6 +247,33 @@ def _init_state():
     return datetime.now().astimezone().isoformat(), 0
 
 
+def _is_self_generated_noise(fields: dict, out_event_type: str) -> bool:
+    """The forwarder itself generates real, loggable Windows activity just
+    by running: its own PowerShell polling subprocess (a new process every
+    poll cycle), its own HTTP calls to the SIEM (a real network connection
+    Sysmon dutifully logs), and PowerShell's own internal script-policy
+    validation temp files. None of that is attacker activity - it's the
+    forwarder watching itself and then forwarding what it saw, which
+    floods real telemetry with self-referential noise instead of
+    filtering it before it ever reaches the SIEM."""
+    command_line = (fields.get("CommandLine") or "")
+    if "Get-WinEvent" in command_line and "-FilterHashtable" in command_line:
+        return True  # this IS the forwarder's own polling command being logged
+
+    target_filename = (fields.get("TargetFilename") or "")
+    if "__PSScriptPolicyTest_" in target_filename:
+        return True  # PowerShell's own internal script validation, not attacker-created
+
+    if out_event_type == "SysmonNetworkConnect":
+        image = (fields.get("Image") or "").lower()
+        dest_port = (fields.get("DestinationPort") or "")
+        siem_port = SIEM_URL.rsplit(":", 1)[-1] if ":" in SIEM_URL.rsplit("/", 1)[-1] else ""
+        if "python.exe" in image and dest_port and dest_port == siem_port:
+            return True  # the forwarder's own outbound call TO the SIEM, not a C2 channel
+
+    return False
+
+
 def _poll_channel(friendly_name, channel, last_start_iso, last_max_record_id):
     command = _PS_TEMPLATE.format(channel=channel, start=last_start_iso)
     try:
@@ -285,6 +313,12 @@ def _poll_channel(friendly_name, channel, last_start_iso, last_max_record_id):
             continue
 
         fields = _extract_fields(ev.get("Xml", ""))
+
+        if _is_self_generated_noise(fields, out_event_type):
+            if record_id:
+                newest_record = max(newest_record, record_id)
+            newest_time = time_created
+            continue
 
         payload = {
             "source": friendly_name,
