@@ -6,20 +6,26 @@ A full detection-and-response platform built from scratch in Python: multi-sourc
 
 ## Screenshots
 
-**Dashboard** — live alert feed, real-time charts, MITRE-tagged alerts
-![Dashboard](screenshots/dashboard.png)
+**Dashboard** — live alert feed, real-time charts, MITRE-tagged alerts, AI-Summary
+<img width="1915" height="872" alt="AI-SUMMARY 24H" src="https://github.com/user-attachments/assets/cdfd1e70-4025-42a5-8781-3618b18ed77c" />
+<img width="1916" height="873" alt="DASHBOARD" src="https://github.com/user-attachments/assets/c15f440a-b827-477b-bff6-b87b4f387003" />
+
 
 **Sentinel BAS — Detection Validation** — measured MITRE ATT&CK coverage, not a manual guess
-![Sentinel BAS](screenshots/sentinel-bas.png)
+<img width="1910" height="870" alt="BAS" src="https://github.com/user-attachments/assets/0fea9d6c-fe80-4106-b84f-cf244b66ead9" />
+
 
 **Attack Chain Correlation** — multi-stage attacks automatically clustered into one incident
-![Attack Chains](screenshots/attack-chains.png)
+<img width="1902" height="878" alt="CHAINS" src="https://github.com/user-attachments/assets/4328aae5-cb5a-4591-b181-716bfa8694fe" />
+
 
 **Detection Rules** — all 35 rules with live hit counts and enable/disable control
-![Detection Rules](screenshots/detection-rules.png)
+<img width="1917" height="890" alt="RULES" src="https://github.com/user-attachments/assets/0cb77c10-a626-412d-b561-e14529bcf176" />
+
 
 **SOAR** — queued response actions with human approval and safety guardrails
-![SOAR](screenshots/soar.png)
+<img width="1895" height="867" alt="SOAR" src="https://github.com/user-attachments/assets/8f71cad1-3783-4e06-8575-22b0fd29c029" />
+
 
 ## What it does
 
