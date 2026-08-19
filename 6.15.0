@@ -1,8 +1,0 @@
-Requirement already satisfied: pyinstaller in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (6.15.0)
-Requirement already satisfied: waitress==3.0.2 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (3.0.2)
-Requirement already satisfied: setuptools>=42.0.0 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (84.0.0)
-Requirement already satisfied: altgraph in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (0.17.5)
-Requirement already satisfied: pefile!=2024.8.26,>=2022.5.30 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (2023.2.7)
-Requirement already satisfied: pywin32-ctypes>=0.2.1 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (0.2.3)
-Requirement already satisfied: pyinstaller-hooks-contrib>=2025.8 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (2026.6)
-Requirement already satisfied: packaging>=22.0 in C:\Users\sodik\AppData\Local\Programs\Python\Python314\Lib\site-packages (from pyinstaller) (26.3)
