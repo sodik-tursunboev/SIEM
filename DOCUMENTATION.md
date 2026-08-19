@@ -434,3 +434,96 @@ with a console message if it is missing.
 
 Delete `%LOCALAPPDATA%\MiniSIEM\`. The next launch recreates the
 database, keys and default admin account.
+
+---
+
+## 9. UI redesign — v3 to v4 ("Terminal")
+
+### 9.1 Why this happened
+
+The original stylesheet (v3) was a legitimate dark dashboard — restrained
+accent color, real dark-mode discipline, no obvious bugs. It was also
+indistinguishable from what any AI assistant produces by default for
+"clean dark SOC dashboard": near-black surface, one blue info color,
+neutral sans UI font, 4px rounded corners. Nothing wrong with it, nothing
+specific to it either.
+
+v4 commits to one real reference point instead: TryHackMe's
+terminal/CTF visual language, chosen because it matches both the
+operator's TryHackMe top-1% background and the existing SODIK OS
+branding direction, rather than a generic "professional SIEM" look.
+
+### 9.2 What changed, concretely
+
+| | v3 | v4 |
+|---|---|---|
+| Primary UI font | IBM Plex Sans | JetBrains Mono — mono everywhere, not just data |
+| Accent color | Blue (`--info`) | Red (`--accent`), THM-derived |
+| Border radius | 4px | 0px — sharp terminal edges |
+| Nav styling | Plain list | `root@:~$` brand prefix, `›` link markers, `# ` section labels |
+| Background | Flat | Faint scanline texture (low-opacity, deliberate, the one aesthetic risk taken) |
+| Buttons | Plain text | `[ bracketed ]` via CSS `::before`/`::after` |
+| Icons | Emoji (🤖, ⬇) | Removed entirely — bracket-styled text labels |
+| Dashboard | No signature element | Boot-sequence block on load |
+
+### 9.3 Why this was a one-file change
+
+All 19 templates share one class API — `.card`, `.btn`, `.sev-*`,
+`.badge-*`, `.mitre-tag`, `.panel-title`, etc. Every visual property
+lives in `static/style.css`; no template's markup references a color,
+font, or radius directly. Redesigning meant rewriting that one file
+completely — new token values, same selectors — with zero markup
+changes required across any of the 19 pages. This is precisely what
+that shared class API is for.
+
+The one template that DID need markup changes was `dashboard.html`,
+for the boot-sequence element described below. The font `<link>` tag
+also needed updating in each template's `<head>` — this is exactly
+the kind of duplicated boilerplate that the (currently unused) planned
+`base.html`/Jinja2-inheritance refactor would eliminate; see the
+"Known limitations" note in section 9.5.
+
+### 9.4 The boot-sequence element
+
+```
+[ok] sysmon.operational  ................ connected
+[ok] detection_engine    ................ 30+ rules loaded
+[ok] correlation_engine  ................ armed
+[ok] soar_guardrails     ................ active
+session: admin@mini-siem · role: Admin_
+```
+
+This is the one deliberately memorable element the redesign is built
+around. It renders on the dashboard on every load, staggered in with a
+short CSS animation, and respects `prefers-reduced-motion` (skips the
+animation, shows all lines immediately).
+
+It is written to be **honest, not theatrical** — every line reflects
+something the application actually does on startup (these are close
+paraphrases of what `launcher.py` prints to the real console), rather
+than being decorative filler unconnected to what the tool does.
+
+### 9.5 Known limitations
+
+- **No template inheritance yet.** All 19 templates still duplicate the
+  `<head>` block (font link, theme script, stylesheet link) rather than
+  extending a shared Jinja2 base template. A `base.html` was drafted
+  during this work but not wired in across all pages — the payoff
+  (one shared `<head>`) is real but touching 19 files to route through
+  it was deferred as a separate pass rather than bundled into the
+  visual redesign. Worth doing before a portfolio review if time
+  allows: it is a legitimate, describable craftsmanship improvement
+  ("refactored 19 templates onto Jinja2 inheritance, removing ~150
+  lines of duplicated boilerplate").
+- **Inline `<style>` blocks remain in 14 templates.** These are
+  page-specific layout rules (grid columns, chart heights) that don't
+  belong in the global stylesheet, so their presence isn't itself a
+  problem — but combined with the missing template inheritance, they
+  are part of the same underlying gap.
+- **Font import duplicated 19 times** rather than centralized — same
+  root cause as the missing base template.
+
+None of these affect correctness or the visual result the redesign
+targets. They are the next round of structural cleanup, not defects
+introduced by this pass.
+
