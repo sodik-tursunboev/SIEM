@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — SOC Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>
+  // Apply saved theme before first paint so there's no flash of the wrong theme.
+  (function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();
+</script>
+<script src="{{ url_for('static', filename='mini-charts.js') }}"></script>
+<style>
+  .grid-top {
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:16px; margin-bottom:20px;
+  }
+  .card .label {
+    font-family:var(--sans); font-size:10.5px; letter-spacing:.06em;
+    color:var(--text-dim); text-transform:uppercase; margin-bottom:8px; font-weight:600;
+  }
+  .card .value { font-family:var(--mono); font-size:30px; font-weight:600; color:var(--text); }
+  .card .value.ok { color:var(--signal); }
+  .card .value.warn { color:var(--warn); }
+  .card .value.crit { color:var(--accent); }
+
+  .grid-mid {
+    display:grid; grid-template-columns: 3fr 2fr; gap:16px; margin-bottom:20px;
+  }
+  .section { margin-bottom:20px; }
+
+  .chart-wrap { height:420px; }
+  .donut-wrap { height:420px; display:flex; align-items:center; justify-content:center; }
+</style>
+</head>
+<body>
+
+{% include '_nav.html' %}
+
+<main class="page">
+
+  <div class="boot-sequence" aria-hidden="true">
+    <div class="boot-line"><span class="ok">[ok]</span> sysmon.operational  ................ connected</div>
+    <div class="boot-line"><span class="ok">[ok]</span> detection_engine    ................ {{ rule_count if rule_count else '30+' }} rules loaded</div>
+    <div class="boot-line"><span class="ok">[ok]</span> correlation_engine  ................ armed</div>
+    <div class="boot-line"><span class="ok">[ok]</span> soar_guardrails     ................ active</div>
+    <div class="boot-line dim">session: {{ current_username }}@mini-siem · role: {{ current_role }}<span class="boot-cursor"></span></div>
+  </div>
+
+  <div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+    <span style="font-family:var(--mono); font-size:12px; color:var(--text-dim);">Live feed <b style="color:var(--signal);">●</b> auto-refresh 3s</span>
+    <div style="display:flex; gap:8px;">
+      <button class="btn" onclick="generateAiSummary();" id="ai-summary-btn">AI SUMMARY / 24H</button>
+      <a class="btn" href="/api/report/daily">DAILY REPORT</a>
+      <a class="btn" href="/api/report/weekly">WEEKLY REPORT</a>
+    </div>
+  </div>
+
+  <div class="card" id="ai-summary-card" style="display:none;">
+    <div class="panel-title">AI Incident Summary <span class="count" id="ai-summary-count"></span></div>
+    <div id="ai-summary-body" style="font-family:var(--sans); font-size:13.5px; line-height:1.6; white-space:pre-wrap;"></div>
+  </div>
+
+  <div class="grid-top">
+    <div class="card">
+      <div class="label">Total Logs Collected</div>
+      <div class="value" id="stat-total-logs">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Total Alerts</div>
+      <div class="value warn" id="stat-total-alerts">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Alerts (Last Hour)</div>
+      <div class="value" id="stat-alerts-hour">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Critical Alerts</div>
+      <div class="value crit" id="stat-critical">—</div>
+    </div>
+  </div>
+
+  <div class="grid-mid">
+    <div class="card">
+      <div class="panel-title">Alert Rate — Last 2 Hours <span class="count" id="rate-count"></span></div>
+      <div class="chart-wrap" id="rateChart"></div>
+    </div>
+    <div class="card">
+      <div class="panel-title">Severity Breakdown</div>
+      <div class="donut-wrap" id="sevChart"></div>
+    </div>
+  </div>
+
+  <div class="section card">
+    <div class="panel-title">Alerts <span class="count" id="alerts-count"></span></div>
+
+    <div class="filterbar">
+      <label>Severity</label>
+      <select id="f-severity">
+        <option value="">All</option>
+        <option>Critical</option>
+        <option>High</option>
+        <option>Medium</option>
+        <option>Low</option>
+      </select>
+
+      <label>Status</label>
+      <select id="f-status">
+        <option value="">All</option>
+        <option>New</option>
+        <option>Acknowledged</option>
+        <option>Resolved</option>
+      </select>
+
+      <label>From</label>
+      <input type="datetime-local" id="f-alerts-from">
+      <label>To</label>
+      <input type="datetime-local" id="f-alerts-to">
+
+      <input type="text" id="f-alerts-search" placeholder="Search rule, user, IP...">
+
+      <button class="btn" onclick="alertsLimit=25; refreshAlerts();">Apply</button>
+      <button class="btn btn-reset" onclick="resetAlertFilters();">Reset</button>
+      <a class="btn" id="alerts-export-link" href="/api/alerts/export.csv">EXPORT CSV</a>
+    </div>
+
+    <div class="table-wrap" id="alerts-table"></div>
+    <div class="load-more-wrap" id="alerts-load-more" style="display:none;">
+      <button class="btn" onclick="alertsLimit += 25; refreshAlerts();">Load more</button>
+    </div>
+  </div>
+
+  <div class="section card">
+    <div class="panel-title">Logs <span class="count" id="logs-count"></span></div>
+
+    <div class="filterbar">
+      <label>Source</label>
+      <select id="f-source">
+        <option value="">All</option>
+        <option>Security</option>
+        <option>System</option>
+      </select>
+
+      <label>From</label>
+      <input type="datetime-local" id="f-logs-from">
+      <label>To</label>
+      <input type="datetime-local" id="f-logs-to">
+
+      <input type="text" id="f-logs-search" placeholder="Search event, user, host, IP, message...">
+
+      <button class="btn" onclick="logsLimit=25; refreshLogs();">Apply</button>
+      <button class="btn btn-reset" onclick="resetLogFilters();">Reset</button>
+      <a class="btn" id="logs-export-link" href="/api/logs/export.csv">EXPORT CSV</a>
+    </div>
+
+    <div class="table-wrap" id="logs-table"></div>
+    <div class="load-more-wrap" id="logs-load-more" style="display:none;">
+      <button class="btn" onclick="logsLimit += 25; refreshLogs();">Load more</button>
+    </div>
+  </div>
+
+</main>
+
+<footer>Mini SIEM · built for portfolio &amp; SOC analyst practice · rules-based detection engine</footer>
+
+<script>
+// Declared first, before anything that could throw (like Chart.js failing
+// to load from the CDN on a locked-down network) - if that happens below,
+// we still want the tables/filters/stats to keep working even though the
+// charts won't render. An error partway through a <script> block halts
+// everything after it, so state used everywhere needs to be safe early.
+let alertsLimit = 25;
+let logsLimit = 25;
+
+const rateChartEl = document.getElementById('rateChart');
+const sevChartEl = document.getElementById('sevChart');
+
+function fmtTime(iso){
+  const d = new Date(iso + 'Z');
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+// datetime-local gives local time with no timezone suffix; our stored
+// timestamps are UTC ISO strings, so convert local input -> UTC ISO.
+function localInputToUtcIso(value){
+  if (!value) return '';
+  return new Date(value).toISOString();
+}
+
+async function refreshStats(){
+  const r = await fetch('/api/stats'); const s = await r.json();
+  document.getElementById('stat-total-logs').textContent = s.total_logs;
+  document.getElementById('stat-total-alerts').textContent = s.total_alerts;
+  document.getElementById('stat-alerts-hour').textContent = s.alerts_last_hour;
+  document.getElementById('stat-critical').textContent = s.severity_breakdown['Critical'] || 0;
+
+  if (rateChartEl){
+    const buckets = s.alert_rate_trend;
+    const labels = Object.keys(buckets).sort();
+    const values = labels.map(l => buckets[l]);
+    miniLineChart(rateChartEl, labels, values, {color: '#3FB88A', gridColor: '#1E232D', textColor: '#7A8296'});
+    document.getElementById('rate-count').textContent = values.reduce((a,v)=>a+v,0) + ' total';
+  }
+
+  if (sevChartEl){
+    const sev = s.severity_breakdown;
+    const sevValues = [sev['Critical']||0, sev['High']||0, sev['Medium']||0, sev['Low']||0];
+    miniDonutChart(sevChartEl, ['Critical','High','Medium','Low'], sevValues,
+      ['#E5484D','#E5484D','#D9A441','#5B8DEF'], {textColor: '#E6E9EF', bgColor: '#11141B'});
+  }
+}
+
+function buildAlertsQuery(){
+  const params = new URLSearchParams();
+  const severity = document.getElementById('f-severity').value;
+  const status = document.getElementById('f-status').value;
+  const search = document.getElementById('f-alerts-search').value.trim();
+  const from = localInputToUtcIso(document.getElementById('f-alerts-from').value);
+  const to = localInputToUtcIso(document.getElementById('f-alerts-to').value);
+  if (severity) params.set('severity', severity);
+  if (status) params.set('status', status);
+  if (search) params.set('search', search);
+  if (from) params.set('date_from', from);
+  if (to) params.set('date_to', to);
+  params.set('limit', alertsLimit);
+  return params;
+}
+
+function buildLogsQuery(){
+  const params = new URLSearchParams();
+  const source = document.getElementById('f-source').value;
+  const search = document.getElementById('f-logs-search').value.trim();
+  const from = localInputToUtcIso(document.getElementById('f-logs-from').value);
+  const to = localInputToUtcIso(document.getElementById('f-logs-to').value);
+  if (source) params.set('source', source);
+  if (search) params.set('search', search);
+  if (from) params.set('date_from', from);
+  if (to) params.set('date_to', to);
+  params.set('limit', logsLimit);
+  return params;
+}
+
+function resetAlertFilters(){
+  document.getElementById('f-severity').value = '';
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-alerts-search').value = '';
+  document.getElementById('f-alerts-from').value = '';
+  document.getElementById('f-alerts-to').value = '';
+  alertsLimit = 25;
+  refreshAlerts();
+}
+
+function resetLogFilters(){
+  document.getElementById('f-source').value = '';
+  document.getElementById('f-logs-search').value = '';
+  document.getElementById('f-logs-from').value = '';
+  document.getElementById('f-logs-to').value = '';
+  logsLimit = 25;
+  refreshLogs();
+}
+
+async function setAlertStatus(id, status){
+  await fetch(`/api/alerts/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status}),
+  });
+  refreshAlerts();
+}
+
+async function refreshAlerts(){
+  const params = buildAlertsQuery();
+  document.getElementById('alerts-export-link').href = '/api/alerts/export.csv?' + params.toString();
+
+  const r = await fetch('/api/alerts?' + params.toString());
+  const data = await r.json();
+  const alerts = data.alerts;
+
+  document.getElementById('alerts-count').textContent = `${alerts.length} of ${data.total}`;
+  document.getElementById('alerts-load-more').style.display = (alerts.length < data.total) ? 'block' : 'none';
+
+  const container = document.getElementById('alerts-table');
+  if (alerts.length === 0){ container.innerHTML = '<div class="empty">No alerts match these filters.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Time</th><th>Severity</th><th>Rule</th><th>User</th><th>MITRE</th><th>Status</th></tr></thead><tbody>';
+  for (const a of alerts){
+    const mitre = a.mitre_id ? `<span class="mitre-tag" title="${escapeHtml(a.mitre_technique||'')}">${escapeHtml(a.mitre_id)}</span>` : '-';
+    html += `<tr>
+      <td>${fmtTime(a.timestamp)}</td>
+      <td><span class="sev sev-${a.severity}">${escapeHtml(a.severity)}</span></td>
+      <td>${escapeHtml(a.rule_name)}</td>
+      <td>${escapeHtml(a.related_user)||'-'}</td>
+      <td>${mitre}</td>
+      <td>
+        <select class="status-select st-${a.status}" onchange="setAlertStatus(${a.id}, this.value)">
+          <option value="New" ${a.status==='New'?'selected':''}>New</option>
+          <option value="Acknowledged" ${a.status==='Acknowledged'?'selected':''}>Acknowledged</option>
+          <option value="Resolved" ${a.status==='Resolved'?'selected':''}>Resolved</option>
+        </select>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function refreshLogs(){
+  const params = buildLogsQuery();
+  document.getElementById('logs-export-link').href = '/api/logs/export.csv?' + params.toString();
+
+  const r = await fetch('/api/logs?' + params.toString());
+  const data = await r.json();
+  const logs = data.logs;
+
+  document.getElementById('logs-count').textContent = `${logs.length} of ${data.total}`;
+  document.getElementById('logs-load-more').style.display = (logs.length < data.total) ? 'block' : 'none';
+
+  const container = document.getElementById('logs-table');
+  if (logs.length === 0){ container.innerHTML = '<div class="empty">No logs match these filters.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Time</th><th>Source</th><th>Event</th><th>User</th><th>Host</th><th>Source IP</th></tr></thead><tbody>';
+  for (const l of logs){
+    html += `<tr><td>${fmtTime(l.timestamp)}</td><td>${escapeHtml(l.source)}</td><td>${escapeHtml(l.event_type)}</td><td>${escapeHtml(l.user)||'-'}</td><td>${escapeHtml(l.host)||'-'}</td><td>${escapeHtml(l.source_ip)||'-'}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function generateAiSummary(){
+  const btn = document.getElementById('ai-summary-btn');
+  const card = document.getElementById('ai-summary-card');
+  const body = document.getElementById('ai-summary-body');
+  const countEl = document.getElementById('ai-summary-count');
+
+  btn.disabled = true;
+  btn.textContent = 'ANALYZING...';
+  card.style.display = 'block';
+  body.textContent = 'Generating summary...';
+  countEl.textContent = '';
+
+  try {
+    const r = await fetch('/api/ai-summary?hours=24');
+    const data = await r.json();
+    if (data.ok){
+      body.textContent = data.summary;
+      countEl.textContent = `based on ${data.alert_count} alert(s), last 24h`;
+    } else {
+      body.textContent = '⚠ ' + data.error;
+      countEl.textContent = '';
+    }
+  } catch (e) {
+    body.textContent = '⚠ Request failed: ' + e;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'AI SUMMARY / 24H';
+  }
+}
+
+function refreshAll(){ refreshStats(); refreshAlerts(); refreshLogs(); }
+refreshAll();
+setInterval(refreshAll, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Sigma Rules</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  #new-sigma-yaml {
+    width:100%; min-height:220px; background:var(--ink); border:1px solid var(--border); color:var(--text);
+    font-family:var(--mono); font-size:12px; padding:12px; border-radius:8px; resize:vertical;
+    box-sizing:border-box;
+  }
+  #new-sigma-yaml:focus { border-color:var(--info); }
+  .sigma-error { color:var(--accent); font-family:var(--mono); font-size:12px; margin-top:8px; }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">Sigma Rules <span class="count" id="sigma-count"></span></div>
+    <div class="panel-sub">
+      Sigma is the open, vendor-neutral YAML detection-rule format used across the SIEM industry
+      (Splunk, Elastic, Sentinel, Wazuh, Chronicle all support importing Sigma rules). Rules here
+      run against every incoming log alongside the built-in detection rules. This is a simplified
+      interpreter — it supports single/multi-selection AND/OR conditions with exact and wildcard
+      (<code>*text*</code>) field matching, which covers the large majority of real Sigma rules.
+    </div>
+    <div class="table-wrap" id="sigma-table"></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Add a Rule</div>
+    <div class="panel-sub">Paste a Sigma-format YAML rule. Required fields: <code>title</code>, <code>detection.condition</code>.</div>
+    <textarea id="new-sigma-yaml" spellcheck="false">title: My New Detection
+description: What this catches and why it matters
+logsource:
+  category: process_creation
+detection:
+  selection:
+    EventID: 4688
+    CommandLine: '*something-suspicious*'
+  condition: selection
+level: medium
+tags:
+  - attack.execution
+  - attack.t1059
+</textarea>
+    <div id="sigma-error" class="sigma-error"></div>
+    <div style="margin-top:10px;">
+      <button class="btn btn-primary" onclick="addSigmaRule();">Save rule</button>
+    </div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Sigma Rules</footer>
+
+<script>
+async function loadSigmaRules(){
+  const r = await fetch('/api/sigma');
+  const rules = await r.json();
+  document.getElementById('sigma-count').textContent = rules.length;
+  const container = document.getElementById('sigma-table');
+  if (rules.length === 0){ container.innerHTML = '<div class="empty">No Sigma rules loaded yet.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Title</th><th>Level</th><th>Condition</th><th>Tags</th><th>File</th><th></th></tr></thead><tbody>';
+  for (const r of rules){
+    const levelClass = {critical:'Critical', high:'High', medium:'Medium', low:'Low', informational:'Low'}[r.level] || 'Medium';
+    html += `<tr>
+      <td>${escapeHtml(r.title)}</td>
+      <td><span class="sev sev-${levelClass}">${escapeHtml(r.level)}</span></td>
+      <td><code>${escapeHtml(r.condition)}</code></td>
+      <td>${(r.tags||[]).map(t => `<span class="mitre-tag">${escapeHtml(t)}</span>`).join(' ')}</td>
+      <td style="color:var(--text-dim); font-size:11px;">${escapeHtml(r.file)}</td>
+      <td>${r.file.startsWith('custom_') ? `<button class="btn btn-danger" onclick="deleteSigmaRule('${r.file}')">Delete</button>` : ''}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+async function addSigmaRule(){
+  const yamlText = document.getElementById('new-sigma-yaml').value;
+  const errBox = document.getElementById('sigma-error');
+  errBox.textContent = '';
+  const r = await fetch('/api/sigma', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({yaml: yamlText}),
+  });
+  const data = await r.json();
+  if (!r.ok){
+    errBox.textContent = data.error || 'Failed to save rule.';
+    return;
+  }
+  loadSigmaRules();
+}
+
+async function deleteSigmaRule(filename){
+  if (!confirm(`Delete Sigma rule "${filename}"?`)) return;
+  await fetch(`/api/sigma/${encodeURIComponent(filename)}/delete`, {method: 'POST'});
+  loadSigmaRules();
+}
+
+loadSigmaRules();
+</script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Threat Hunting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<style>
+  .query-chip {
+    display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
+    background:var(--surface-raised); border:1px solid var(--border); border-radius:14px;
+    font-family:var(--mono); font-size:11px; color:var(--text); cursor:pointer;
+    transition:border-color .15s, color .15s;
+  }
+  .query-chip:hover { border-color:var(--signal); color:var(--signal); }
+  .query-chip .chip-del {
+    color:var(--text-dim); font-size:13px; line-height:1; padding-left:2px;
+  }
+  .query-chip .chip-del:hover { color:var(--accent); }
+</style>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">Threat Hunting <span class="count" id="results-count"></span></div>
+    <div class="panel-sub">Ad-hoc search across every collected log - not just what the auto-detection rules flagged. Good for "did anything else happen involving this IP/user/host" questions.</div>
+
+    <div style="margin-bottom:16px;">
+      <label class="field-label" style="margin-bottom:6px;">Threat Hunt Queries <span style="color:var(--text-dim); text-transform:none; font-weight:normal;">— click to run</span></label>
+      <div id="saved-queries-chips" style="display:flex; flex-wrap:wrap; gap:6px;"></div>
+      {% if current_role in ('Analyst', 'Admin') %}
+      <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
+        <input type="text" id="save-query-name" placeholder="Name this query to save it..."
+               style="background:var(--ink); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:11.5px; padding:6px 9px; border-radius:var(--radius); width:220px;">
+        <button class="btn" onclick="saveCurrentQuery()">Save current query</button>
+        <span id="save-query-msg" style="display:none; font-family:var(--mono); font-size:11px;"></span>
+      </div>
+      {% endif %}
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label class="field-label" style="margin-bottom:4px;">Query language</label>
+      <div style="display:flex; gap:8px; align-items:flex-start;">
+        <input type="text" id="f-query" placeholder='eventid:4625 AND username:Administrator   |   hostname:DC* OR hostname:WS01'
+               style="flex:1; background:var(--ink); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12.5px; padding:8px 10px; border-radius:var(--radius);">
+        <button class="btn btn-primary" onclick="resultsLimit=25; runHunt();">Run Query</button>
+      </div>
+      <div id="query-error" style="display:none; color:var(--accent); font-family:var(--mono); font-size:11px; margin-top:6px;"></div>
+      <div style="color:var(--text-dim); font-family:var(--mono); font-size:10.5px; margin-top:6px;">
+        Fields: eventid, username, ip, hostname, source, eventtype, message &middot; Connectors: AND, OR &middot; Wildcard: host:DC* &middot; Quotes for spaces: username:"j doe"
+      </div>
+    </div>
+
+    <div class="filterbar">
+      <label>Search</label>
+      <input type="text" id="f-search" placeholder="Free text: user, host, IP, message..." style="min-width:240px;">
+      <label>Source</label>
+      <select id="f-source">
+        <option value="">All</option>
+        <option>Security</option>
+        <option>System</option>
+        <option>Syslog</option>
+      </select>
+      <label>Host</label>
+      <input type="text" id="f-host" placeholder="hostname">
+      <label>User</label>
+      <input type="text" id="f-user" placeholder="username">
+      <label>Source IP</label>
+      <input type="text" id="f-ip" placeholder="1.2.3.4">
+      <label>From</label>
+      <input type="datetime-local" id="f-from">
+      <label>To</label>
+      <input type="datetime-local" id="f-to">
+      <button class="btn btn-primary" onclick="resultsLimit=25; runHunt();">Search</button>
+      <button class="btn btn-reset" onclick="resetHunt();">Reset</button>
+      <a class="btn" id="export-link" href="#">EXPORT CSV</a>
+    </div>
+
+    <div class="table-wrap" id="results-table"></div>
+    <div class="load-more-wrap" id="load-more" style="display:none;">
+      <button class="btn" onclick="resultsLimit += 50; runHunt();">Load more</button>
+    </div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Threat Hunting</footer>
+
+<script>
+let resultsLimit = 25;
+
+function localInputToUtcIso(value){ if (!value) return ''; return new Date(value).toISOString(); }
+function fmtTime(iso){ const d = new Date(iso + 'Z'); return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
+
+function buildQuery(){
+  const params = new URLSearchParams();
+  const map = {search:'f-search', source:'f-source', host:'f-host', user:'f-user', source_ip:'f-ip'};
+  for (const [key, id] of Object.entries(map)){
+    const v = document.getElementById(id).value.trim();
+    if (v) params.set(key, v);
+  }
+  const q = document.getElementById('f-query').value.trim();
+  if (q) params.set('q', q);
+  const from = localInputToUtcIso(document.getElementById('f-from').value);
+  const to = localInputToUtcIso(document.getElementById('f-to').value);
+  if (from) params.set('date_from', from);
+  if (to) params.set('date_to', to);
+  params.set('limit', resultsLimit);
+  return params;
+}
+
+function resetHunt(){
+  ['f-search','f-source','f-host','f-user','f-ip','f-from','f-to','f-query'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('query-error').style.display = 'none';
+  resultsLimit = 25;
+  runHunt();
+}
+
+async function runHunt(){
+  const params = buildQuery();
+  document.getElementById('export-link').href = '/api/logs/export.csv?' + params.toString();
+  const errorBox = document.getElementById('query-error');
+
+  const r = await fetch('/api/logs?' + params.toString());
+  const data = await r.json();
+
+  if (!r.ok){
+    errorBox.textContent = data.error || 'Query error.';
+    errorBox.style.display = 'block';
+    document.getElementById('results-table').innerHTML = '<div class="empty">Fix the query above and try again.</div>';
+    document.getElementById('results-count').textContent = '';
+    return;
+  }
+  errorBox.style.display = 'none';
+
+  document.getElementById('results-count').textContent = `${data.logs.length} of ${data.total}`;
+  document.getElementById('load-more').style.display = (data.logs.length < data.total) ? 'block' : 'none';
+
+  const container = document.getElementById('results-table');
+  if (data.logs.length === 0){ container.innerHTML = '<div class="empty">No matching events. Try widening the filters.</div>'; return; }
+
+  let html = '<table><thead><tr><th>Time</th><th>Source</th><th>Event</th><th>User</th><th>Host</th><th>Source IP</th><th>Message</th></tr></thead><tbody>';
+  for (const l of data.logs){
+    html += `<tr><td>${fmtTime(l.timestamp)}</td><td>${escapeHtml(l.source)}</td><td>${escapeHtml(l.event_type)}</td>
+      <td>${l.user ? `<a href="/timeline?type=user&value=${encodeURIComponent(l.user)}">${escapeHtml(l.user)}</a>` : '-'}</td>
+      <td>${l.host ? `<a href="/timeline?type=host&value=${encodeURIComponent(l.host)}">${escapeHtml(l.host)}</a>` : '-'}</td>
+      <td>${escapeHtml(l.source_ip)||'-'}</td><td style="max-width:320px;white-space:normal;">${escapeHtml(l.message)||''}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+// If arriving from the global search bar or an IOC/timeline link, prefill.
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('search')) document.getElementById('f-search').value = urlParams.get('search');
+if (urlParams.get('host')) document.getElementById('f-host').value = urlParams.get('host');
+if (urlParams.get('user')) document.getElementById('f-user').value = urlParams.get('user');
+if (urlParams.get('source_ip')) document.getElementById('f-ip').value = urlParams.get('source_ip');
+
+function runSavedQuery(queryText){
+  document.getElementById('f-query').value = queryText;
+  resultsLimit = 25;
+  runHunt();
+}
+
+async function loadSavedQueries(){
+  const r = await fetch('/api/saved-queries');
+  const queries = await r.json();
+  const container = document.getElementById('saved-queries-chips');
+  const canEdit = {{ 'true' if current_role in ('Analyst', 'Admin') else 'false' }};
+
+  container.innerHTML = queries.map(q => {
+    const escaped = q.query_text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const delBtn = (canEdit && !q.is_builtin)
+      ? `<span class="chip-del" onclick="event.stopPropagation(); deleteSavedQuery(${q.id});" title="Delete">&times;</span>`
+      : '';
+    return `<span class="query-chip" onclick="runSavedQuery('${escaped}')" title="${escapeHtml(q.query_text)}">${escapeHtml(q.name)}${delBtn}</span>`;
+  }).join('');
+}
+
+async function saveCurrentQuery(){
+  const name = document.getElementById('save-query-name').value.trim();
+  const queryText = document.getElementById('f-query').value.trim();
+  const msg = document.getElementById('save-query-msg');
+  if (!name || !queryText){
+    msg.textContent = 'Need both a name and a query in the box above.';
+    msg.style.color = 'var(--accent)';
+    msg.style.display = 'inline';
+    return;
+  }
+  const r = await fetch('/api/saved-queries', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name, query_text: queryText}),
+  });
+  const data = await r.json();
+  if (!r.ok){
+    msg.textContent = data.error || 'Failed to save.';
+    msg.style.color = 'var(--accent)';
+  } else {
+    msg.textContent = 'Saved.';
+    msg.style.color = 'var(--signal)';
+    document.getElementById('save-query-name').value = '';
+    await loadSavedQueries();
+  }
+  msg.style.display = 'inline';
+  setTimeout(() => msg.style.display = 'none', 2500);
+}
+
+async function deleteSavedQuery(id){
+  if (!confirm('Delete this saved query?')) return;
+  await fetch(`/api/saved-queries/${id}/delete`, {method: 'POST'});
+  await loadSavedQueries();
+}
+
+loadSavedQueries();
+runHunt();
+</script>
+</body>
+</html>
