@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Login</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<style>
+  body { display:flex; align-items:center; justify-content:center; }
+  .login-card { width:340px; }
+  .login-card h1 { font-size:15px; letter-spacing:.06em; text-transform:uppercase; margin:0 0 4px 0; }
+  .login-card .sub { font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-bottom:20px; }
+  .login-card label { font-family:var(--mono); font-size:10.5px; color:var(--text-dim); text-transform:uppercase; display:block; margin-bottom:6px; }
+  .login-card input {
+    width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text);
+    font-family:var(--sans); font-size:13px; padding:9px 11px; border-radius:6px; margin-bottom:14px;
+  }
+  .login-card input:focus { border-color:var(--info); }
+  .login-card button { width:100%; padding:10px; font-size:13px; }
+  .hint { font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:16px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="card login-card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+      <div style="width:9px;height:9px;border-radius:50%;background:var(--signal);box-shadow:0 0 8px var(--signal);"></div>
+      <h1>Mini SIEM</h1>
+    </div>
+    <div class="sub">SOC Dashboard · sign in</div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash flash-{{ 'error' if category == 'error' else 'ok' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST">
+      <label>Username</label>
+      <input type="text" name="username" autofocus required>
+      <label>Password</label>
+      <input type="password" name="password" required>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+
+    <div class="hint">First time? Default login is admin / admin123 — change it after signing in.</div>
+  </div>
+</body>
+</html>

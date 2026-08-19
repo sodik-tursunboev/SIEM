@@ -1,0 +1,19 @@
+# Secrets - never commit
+instance_secret.key
+ingest_key.txt
+.env
+
+# Local data
+siem.db
+reports/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# PyInstaller build output
+build/
+dist/
+*.manifest

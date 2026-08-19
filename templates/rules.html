@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Detection Rules</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .toggle {
+    position:relative; display:inline-block; width:38px; height:20px; cursor:pointer;
+  }
+  .toggle input { opacity:0; width:0; height:0; }
+  .toggle .slider {
+    position:absolute; inset:0; background:var(--border); border-radius:20px;
+    transition:background .15s;
+  }
+  .toggle .slider::before {
+    content:""; position:absolute; height:14px; width:14px; left:3px; bottom:3px;
+    background:var(--text-dim); border-radius:50%; transition:transform .15s, background .15s;
+  }
+  .toggle input:checked + .slider { background:rgba(53,226,138,.25); }
+  .toggle input:checked + .slider::before { transform:translateX(18px); background:var(--signal); }
+  .toggle.disabled { opacity:.5; cursor:not-allowed; }
+  tr.rule-disabled td { color:var(--text-dim); }
+  tr.rule-disabled .sev { opacity:.45; }
+  .sev-Varies { background:rgba(124,135,152,.13); color:var(--text-dim); border:1px solid var(--border); }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">Detection Rules <span class="count" id="rule-count"></span></div>
+    <div class="panel-sub">
+      Every built-in detection rule, with its MITRE ATT&amp;CK mapping, hit count, and last trigger time -
+      the same kind of rule catalog a real SIEM (Elastic, Splunk ES, Sentinel) shows. Toggling a rule off
+      stops it from firing entirely, not just from displaying.
+      {% if current_role == 'Viewer' %}<br>Viewers can see this page but need Analyst role or above to toggle rules.{% endif %}
+    </div>
+    <div class="table-wrap" id="rules-table" style="margin-top:14px;"></div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Detection Rules</footer>
+
+<script>
+const CAN_TOGGLE = {{ 'true' if current_role in ('Analyst', 'Admin') else 'false' }};
+
+function fmtTime(iso){
+  if (!iso) return 'Never';
+  const d = new Date(iso + 'Z');
+  return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+
+async function toggleRule(ruleKey, checkbox){
+  if (!CAN_TOGGLE){ checkbox.checked = !checkbox.checked; return; }
+  checkbox.disabled = true;
+  try {
+    const r = await fetch(`/api/rules/${ruleKey}/toggle`, {method: 'POST'});
+    if (!r.ok) throw new Error('toggle failed');
+    await loadRules();
+  } catch (e) {
+    checkbox.checked = !checkbox.checked;
+    alert('Failed to toggle rule.');
+  }
+}
+
+async function loadRules(){
+  const r = await fetch('/api/rules');
+  const rules = await r.json();
+  document.getElementById('rule-count').textContent = rules.length;
+
+  const container = document.getElementById('rules-table');
+  if (rules.length === 0){
+    container.innerHTML = '<div class="empty">No rules registered yet - restart the app to populate the registry.</div>';
+    return;
+  }
+
+  let html = '<table><thead><tr><th>Name</th><th>Severity</th><th>MITRE</th><th>Status</th><th>Last Triggered</th><th>Hit Count</th><th>Enabled</th></tr></thead><tbody>';
+  for (const rule of rules){
+    const disabledClass = rule.enabled ? '' : 'rule-disabled';
+    const toggleDisabledClass = CAN_TOGGLE ? '' : 'disabled';
+    html += `<tr class="${disabledClass}">
+      <td><b>${escapeHtml(rule.display_name)}</b></td>
+      <td><span class="sev sev-${rule.severity}">${escapeHtml(rule.severity)}</span></td>
+      <td>${rule.mitre_id ? `<span class="mitre-tag" title="${escapeHtml(rule.mitre_technique||'')}">${escapeHtml(rule.mitre_id)}</span>` : '-'}</td>
+      <td>${rule.enabled ? '<span class="status-pill status-Executed">Active</span>' : '<span class="status-pill status-Rejected">Disabled</span>'}</td>
+      <td>${fmtTime(rule.last_triggered)}</td>
+      <td>${rule.hit_count}</td>
+      <td>
+        <label class="toggle ${toggleDisabledClass}">
+          <input type="checkbox" ${rule.enabled ? 'checked' : ''} onchange="toggleRule('${rule.rule_key}', this)">
+          <span class="slider"></span>
+        </label>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+loadRules();
+setInterval(loadRules, 8000);
+</script>
+</body>
+</html>

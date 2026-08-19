@@ -1,0 +1,21 @@
+title: Suspicious Access to Administrative Share
+id: 2e3f4a5b-6c7d-8e9f-0a1b-2c3d4e5f6a7b
+status: experimental
+description: >
+  Detects logon activity referencing administrative shares (C$, ADMIN$)
+  in the event message, commonly seen with lateral movement tools like
+  PsExec that use these shares to copy and execute code remotely.
+logsource:
+  category: authentication
+detection:
+  selection_event:
+    EventID:
+      - 4624
+      - 4625
+  selection_share:
+    CommandLine: '*ADMIN$*'
+  condition: selection_event and selection_share
+level: medium
+tags:
+  - attack.lateral_movement
+  - attack.t1570

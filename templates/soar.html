@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — SOAR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .status-pill { padding:2px 8px; border-radius:4px; font-size:10.5px; font-weight:700; white-space:nowrap; }
+  .status-Pending { background:rgba(255,176,32,.15); color:var(--warn); border:1px solid rgba(255,176,32,.4); }
+  .status-Executed { background:rgba(51,214,166,.15); color:var(--signal); border:1px solid rgba(51,214,166,.4); }
+  .status-Failed, .status-Blocked { background:rgba(255,59,92,.15); color:var(--accent); border:1px solid rgba(255,59,92,.4); }
+  .status-Rejected { background:rgba(107,119,135,.15); color:var(--text-dim); border:1px solid var(--border); }
+  .action-btn { padding:4px 10px; font-size:11px; }
+  .safety-note {
+    font-family:var(--mono); font-size:11.5px; color:var(--text-dim); line-height:1.6;
+    background:var(--ink); border:1px solid var(--border); border-radius:8px; padding:12px 14px; margin-top:14px;
+  }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">
+      Pending Actions <span class="count" id="pending-count"></span>
+    </div>
+    <div class="panel-sub">
+      SOAR = Security Orchestration, Automation and Response. When an alert matches a playbook below,
+      a response action is queued here for approval - nothing executes automatically by default.
+    </div>
+    <div class="table-wrap" id="pending-table" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Action History <span class="count" id="history-count"></span></div>
+    <div class="table-wrap" id="history-table"></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Playbooks</div>
+    <div class="panel-sub">Alert patterns mapped to response actions. Edit PLAYBOOKS in soar.py to change these.</div>
+    <div class="table-wrap" id="playbooks-table" style="margin-top:14px;"></div>
+    <div class="safety-note" id="platform-note"></div>
+  </div>
+
+</main>
+<footer>Mini SIEM · SOAR - Active Response</footer>
+
+<script>
+function fmtTime(iso){
+  const d = new Date(iso + 'Z');
+  return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+async function approveAction(id){
+  if (!confirm('Execute this response action now? This runs a real command on the host.')) return;
+  await fetch(`/api/soar/actions/${id}/approve`, {method: 'POST'});
+  loadActions();
+}
+
+async function rejectAction(id){
+  await fetch(`/api/soar/actions/${id}/reject`, {method: 'POST'});
+  loadActions();
+}
+
+async function loadActions(){
+  const r = await fetch('/api/soar/actions');
+  const actions = await r.json();
+
+  const pending = actions.filter(a => a.status === 'Pending');
+  const history = actions.filter(a => a.status !== 'Pending');
+
+  document.getElementById('pending-count').textContent = pending.length;
+  document.getElementById('history-count').textContent = history.length;
+
+  const pendingContainer = document.getElementById('pending-table');
+  if (pending.length === 0){
+    pendingContainer.innerHTML = '<div class="empty">No pending actions right now.</div>';
+  } else {
+    let html = '<table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Rule</th><th>Reason</th><th></th></tr></thead><tbody>';
+    for (const a of pending){
+      html += `<tr>
+        <td>${fmtTime(a.timestamp)}</td>
+        <td>${escapeHtml(a.action_type)}</td>
+        <td><code>${escapeHtml(a.target)}</code></td>
+        <td>${escapeHtml(a.rule_name) || '-'}</td>
+        <td style="color:var(--text-dim); font-size:11.5px;">${escapeHtml(a.reason) || ''}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-primary action-btn" onclick="approveAction(${a.id})">Approve</button>
+          <button class="btn btn-danger action-btn" onclick="rejectAction(${a.id})">Reject</button>
+        </td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    pendingContainer.innerHTML = html;
+  }
+
+  const historyContainer = document.getElementById('history-table');
+  if (history.length === 0){
+    historyContainer.innerHTML = '<div class="empty">No completed actions yet.</div>';
+  } else {
+    let html = '<table><thead><tr><th>Time</th><th>Action</th><th>Target</th><th>Status</th><th>By</th><th>Result</th></tr></thead><tbody>';
+    for (const a of history){
+      html += `<tr>
+        <td>${fmtTime(a.timestamp)}</td>
+        <td>${escapeHtml(a.action_type)}</td>
+        <td><code>${escapeHtml(a.target)}</code></td>
+        <td><span class="status-pill status-${a.status}">${escapeHtml(a.status)}</span></td>
+        <td>${escapeHtml(a.executed_by) || '-'}</td>
+        <td style="color:var(--text-dim); font-size:11px; max-width:320px;">${escapeHtml(a.result_message || a.reason) || ''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    historyContainer.innerHTML = html;
+  }
+}
+
+async function loadPlaybooks(){
+  const r = await fetch('/api/soar/playbooks');
+  const data = await r.json();
+
+  let html = '<table><thead><tr><th>Alert Contains</th><th>Action</th><th>Reason</th></tr></thead><tbody>';
+  for (const p of data.playbooks){
+    html += `<tr><td><code>${escapeHtml(p.match)}</code></td><td>${escapeHtml(p.action)}</td><td style="color:var(--text-dim); font-size:11.5px;">${escapeHtml(p.reason)}</td></tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('playbooks-table').innerHTML = html;
+
+  const autoFire = data.auto_fire_rules.length ? data.auto_fire_rules.join(', ') : 'none - everything requires manual approval';
+  document.getElementById('platform-note').textContent =
+    `Execution mode: ${data.platform} | Auto-fire rules: ${autoFire}`;
+}
+
+loadActions();
+loadPlaybooks();
+setInterval(loadActions, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Cases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .status-pill.status-Open { background:rgba(76,141,255,.13); color:var(--info); border:1px solid rgba(76,141,255,.35); }
+  .status-pill.status-In-Progress { background:rgba(255,165,61,.13); color:var(--warn); border:1px solid rgba(255,165,61,.35); }
+  .status-pill.status-Resolved { background:rgba(53,226,138,.13); color:var(--signal); border:1px solid rgba(53,226,138,.35); }
+  .status-pill.status-Closed { background:rgba(124,135,152,.13); color:var(--text-dim); border:1px solid var(--border); }
+  .case-link { color:var(--signal); font-weight:600; text-decoration:none; }
+  .case-link:hover { text-decoration:underline; }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  {% if current_role in ('Analyst', 'Admin') %}
+  <div class="card">
+    <div class="panel-title">New Case</div>
+    <div class="stack-form" style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end;">
+      <div style="flex:2; min-width:220px;">
+        <label class="field-label">Title</label>
+        <input type="text" id="new-title" placeholder="Suspected credential compromise - jdoe">
+      </div>
+      <div style="min-width:130px;">
+        <label class="field-label">Priority</label>
+        <select id="new-priority" style="width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12.5px; padding:8px 10px; border-radius:var(--radius);">
+          <option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option>
+        </select>
+      </div>
+      <div style="min-width:150px;">
+        <label class="field-label">Assign to</label>
+        <select id="new-assigned" style="width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12.5px; padding:8px 10px; border-radius:var(--radius);">
+          <option value="">Unassigned</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" onclick="createCase()">Create Case</button>
+    </div>
+    <div style="margin-top:8px;">
+      <label class="field-label">Description (optional)</label>
+      <textarea id="new-description" rows="2" style="width:100%; background:var(--ink); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12.5px; padding:8px 10px; border-radius:var(--radius); resize:vertical;"></textarea>
+    </div>
+    <div id="create-error" style="display:none; color:var(--accent); font-family:var(--mono); font-size:11px; margin-top:8px;"></div>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="panel-title">Cases <span class="count" id="case-count"></span></div>
+    <div class="filterbar">
+      <label>Status</label>
+      <select id="f-status" onchange="loadCases()">
+        <option value="">All</option>
+        <option>Open</option><option>In Progress</option><option>Resolved</option><option>Closed</option>
+      </select>
+      <label>Priority</label>
+      <select id="f-priority" onchange="loadCases()">
+        <option value="">All</option>
+        <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+      </select>
+      <label>Assigned</label>
+      <select id="f-assigned" onchange="loadCases()">
+        <option value="">All</option>
+      </select>
+      <button class="btn btn-reset" onclick="resetFilters()">Reset</button>
+    </div>
+    <div class="table-wrap" id="cases-table"></div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Case Management</footer>
+
+<script>
+function fmtTime(iso){
+  if (!iso) return '-';
+  const d = new Date(iso + 'Z');
+  return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'});
+}
+function statusClass(s){ return s.replace(' ', '-'); }
+
+async function loadAssignableUsers(){
+  const r = await fetch('/api/cases/assignable-users');
+  const users = await r.json();
+  for (const sel of [document.getElementById('new-assigned'), document.getElementById('f-assigned')]){
+    if (!sel) continue;
+    for (const u of users){
+      const opt = document.createElement('option');
+      opt.value = u; opt.textContent = u;
+      sel.appendChild(opt);
+    }
+  }
+}
+
+async function createCase(){
+  const title = document.getElementById('new-title').value.trim();
+  const errorBox = document.getElementById('create-error');
+  errorBox.style.display = 'none';
+  if (!title){ errorBox.textContent = 'Title is required.'; errorBox.style.display = 'block'; return; }
+
+  const body = {
+    title,
+    description: document.getElementById('new-description').value.trim(),
+    priority: document.getElementById('new-priority').value,
+    assigned_to: document.getElementById('new-assigned').value || null,
+  };
+  const r = await fetch('/api/cases', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok){
+    errorBox.textContent = data.error || 'Failed to create case.';
+    errorBox.style.display = 'block';
+    return;
+  }
+  window.location.href = `/cases/${data.case_number}`;
+}
+
+function resetFilters(){
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-priority').value = '';
+  document.getElementById('f-assigned').value = '';
+  loadCases();
+}
+
+async function loadCases(){
+  const params = new URLSearchParams();
+  const status = document.getElementById('f-status').value;
+  const priority = document.getElementById('f-priority').value;
+  const assigned = document.getElementById('f-assigned').value;
+  if (status) params.set('status', status);
+  if (priority) params.set('priority', priority);
+  if (assigned) params.set('assigned_to', assigned);
+
+  const r = await fetch('/api/cases?' + params.toString());
+  const cases = await r.json();
+  document.getElementById('case-count').textContent = cases.length;
+
+  const container = document.getElementById('cases-table');
+  if (cases.length === 0){
+    container.innerHTML = '<div class="empty">No cases yet.</div>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Case</th><th>Title</th><th>Status</th><th>Priority</th><th>Assigned</th><th>Created</th><th>Updated</th></tr></thead><tbody>';
+  for (const c of cases){
+    html += `<tr>
+      <td><a class="case-link" href="/cases/${encodeURIComponent(c.case_number)}">${escapeHtml(c.case_number)}</a></td>
+      <td>${escapeHtml(c.title)}</td>
+      <td><span class="status-pill status-${statusClass(c.status)}">${escapeHtml(c.status)}</span></td>
+      <td><span class="sev sev-${c.priority}">${escapeHtml(c.priority)}</span></td>
+      <td>${escapeHtml(c.assigned_to) || '-'}</td>
+      <td>${fmtTime(c.created_at)}</td>
+      <td>${fmtTime(c.updated_at)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+loadAssignableUsers();
+loadCases();
+</script>
+</body>
+</html>

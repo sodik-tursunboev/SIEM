@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Asset Inventory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">Asset Inventory <span class="count" id="assets-count"></span></div>
+    <div class="panel-sub">Every host we've collected logs from, built automatically from log activity. Criticality/owner/notes are editable - click a value to update it.</div>
+    <div class="table-wrap" id="assets-table"></div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Asset Inventory</footer>
+
+<script>
+function fmtTime(iso){ if(!iso) return '-'; const d = new Date(iso + 'Z'); return d.toLocaleString([], {month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit'}); }
+
+async function updateAsset(hostname, field, value){
+  const current = window._assetsCache.find(a => a.hostname === hostname) || {};
+  const payload = {
+    criticality: current.criticality || 'Medium',
+    owner: current.owner || '',
+    notes: current.notes || '',
+  };
+  payload[field] = value;
+  await fetch(`/api/assets/${encodeURIComponent(hostname)}`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+  });
+  loadAssets();
+}
+
+async function loadAssets(){
+  const r = await fetch('/api/assets');
+  const assets = await r.json();
+  window._assetsCache = assets;
+  document.getElementById('assets-count').textContent = assets.length + ' hosts';
+
+  const container = document.getElementById('assets-table');
+  if (assets.length === 0){ container.innerHTML = '<div class="empty">No hosts seen yet.</div>'; return; }
+
+  let html = `<table><thead><tr>
+    <th>Hostname</th><th>Criticality</th><th>Owner</th><th>Logs</th><th>Alerts</th>
+    <th>Users Seen</th><th>First Seen</th><th>Last Seen</th><th>Notes</th>
+  </tr></thead><tbody>`;
+  for (const a of assets){
+    const safeHost = escapeJsAttr(a.hostname);
+    html += `<tr>
+      <td><a href="/timeline?type=host&value=${encodeURIComponent(a.hostname)}">${escapeHtml(a.hostname)}</a></td>
+      <td>
+        <select class="status-select" onchange="updateAsset('${safeHost}','criticality',this.value)">
+          ${['Low','Medium','High','Critical'].map(c => `<option value="${c}" ${a.criticality===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="text" value="${escapeHtml(a.owner||'')}" style="background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12px;width:100px;" onblur="updateAsset('${safeHost}','owner',this.value)"></td>
+      <td>${a.log_count}</td>
+      <td>${a.alert_count > 0 ? `<span class="sev sev-High">${a.alert_count}</span>` : '0'}</td>
+      <td>${a.distinct_users}</td>
+      <td>${fmtTime(a.first_seen)}</td>
+      <td>${fmtTime(a.last_seen)}</td>
+      <td><input type="text" value="${escapeHtml(a.notes||'')}" style="background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:12px;width:140px;" onblur="updateAsset('${safeHost}','notes',this.value)"></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+loadAssets();
+</script>
+</body>
+</html>

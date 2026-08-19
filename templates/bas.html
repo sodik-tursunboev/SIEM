@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini SIEM — Sentinel BAS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="{{ url_for('static', filename='utils.js') }}"></script>
+<script>(function(){ document.documentElement.setAttribute('data-theme', localStorage.getItem('siem-theme') || 'dark'); })();</script>
+<style>
+  .coverage-grid { display:grid; grid-template-columns:repeat(5, 1fr); gap:16px; margin-bottom:18px; }
+  .coverage-pct { font-family:var(--mono); font-size:34px; font-weight:600; }
+  .status-Detected { color:var(--signal); }
+  .status-Delayed { color:var(--warn); }
+  .status-Missed { color:var(--accent); }
+  .status-Pending { color:var(--text-muted); }
+  .status-Running { color:var(--info); }
+</style>
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="page">
+
+  <div class="card">
+    <div class="panel-title">Sentinel BAS — Detection Validation <span class="count" id="coverage-count"></span></div>
+    <div class="panel-sub">
+      Every Atomic Red Team test run against the lab, matched automatically against real alerts by
+      MITRE technique, host, and timing. This is a measured coverage report, not a manual eyeball check -
+      a rule either caught it in time or it didn't.
+    </div>
+    <div class="coverage-grid">
+      <div class="card"><div class="label">Coverage</div><div class="coverage-pct" id="stat-coverage">—</div></div>
+      <div class="card"><div class="label">Detected</div><div class="coverage-pct status-Detected" id="stat-detected">0</div></div>
+      <div class="card"><div class="label">Delayed</div><div class="coverage-pct status-Delayed" id="stat-delayed">0</div></div>
+      <div class="card"><div class="label">Missed</div><div class="coverage-pct status-Missed" id="stat-missed">0</div></div>
+      <div class="card"><div class="label">Pending</div><div class="coverage-pct status-Pending" id="stat-pending">0</div></div>
+    </div>
+    <button class="btn btn-primary" onclick="rescore()">Rescore Pending</button>
+  </div>
+
+  <div class="card">
+    <div class="panel-title">Test Runs</div>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Started</th><th>Technique</th><th>Atomic Test</th><th>Host</th><th>Status</th><th>Latency</th></tr></thead>
+      <tbody id="runs-body"></tbody>
+    </table>
+    </div>
+  </div>
+
+</main>
+<footer>Mini SIEM · Sentinel BAS</footer>
+
+<script>
+async function loadCoverage(){
+  const r = await fetch('/api/bas/coverage');
+  const s = await r.json();
+  document.getElementById('stat-coverage').textContent = s.coverage_pct === null ? '—' : s.coverage_pct + '%';
+  document.getElementById('stat-detected').textContent = s.detected;
+  document.getElementById('stat-delayed').textContent = s.delayed;
+  document.getElementById('stat-missed').textContent = s.missed;
+  document.getElementById('stat-pending').textContent = s.pending;
+  document.getElementById('coverage-count').textContent = s.detected + s.delayed + s.missed + s.pending + s.running;
+}
+
+async function loadRuns(){
+  const r = await fetch('/api/bas/runs');
+  const runs = await r.json();
+  const body = document.getElementById('runs-body');
+  if (runs.length === 0){
+    body.innerHTML = '<tr><td colspan="6"><div class="empty">No test runs yet - deploy bas_runner.ps1 to a lab VM and run some Atomic tests.</div></td></tr>';
+    return;
+  }
+  body.innerHTML = runs.map(run => `
+    <tr>
+      <td>${fmtTime(run.started_at)}</td>
+      <td><span class="mitre-tag">${escapeHtml(run.technique_id)}</span> ${escapeHtml(run.technique_name || '')}</td>
+      <td>${escapeHtml(run.atomic_test_name)}</td>
+      <td class="mono">${escapeHtml(run.host)}</td>
+      <td class="status-${run.status}">${escapeHtml(run.status)}</td>
+      <td>${run.detection_latency_seconds !== null && run.detection_latency_seconds !== undefined ? run.detection_latency_seconds + 's' : '-'}</td>
+    </tr>
+  `).join('');
+}
+
+async function rescore(){
+  await fetch('/api/bas/rescore', {method: 'POST'});
+  await refreshAll();
+}
+
+async function refreshAll(){
+  await loadCoverage();
+  await loadRuns();
+}
+
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>
