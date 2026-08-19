@@ -90,7 +90,7 @@ Remote forwarder(s) -/          |                              | Anomaly detecti
   + Chains      + Saved         Chains    Management      Summaries
                  Queries
 ```
-##Desktop Build & Hardening
+Desktop Build & Hardening
 
 Desktop Application
 
