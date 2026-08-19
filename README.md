@@ -90,6 +90,74 @@ Remote forwarder(s) -/          |                              | Anomaly detecti
   + Chains      + Saved         Chains    Management      Summaries
                  Queries
 ```
+##Desktop Build & Hardening
+
+Desktop Application
+
+The SIEM ships as a standalone Windows executable. No Python installation required on the target machine.
+
+build.bat          →  dist\MiniSIEM.exe
+
+Double-click the executable: a console window streams live detections and the dashboard opens in the browser automatically.
+
+Full documentation: DOCUMENTATION.md
+
+The bug that made this worth doing
+
+Five modules resolved file paths relative to their own source file:
+
+python
+DB_PATH = os.path.join(os.path.dirname(__file__), "siem.db")
+
+Correct when running python app.py. Wrong inside a frozen executable.
+
+PyInstaller unpacks its bundle into a temporary directory exposed as sys._MEIPASS, and the operating system deletes that directory when the process exits. The application would have launched, ingested events, raised alerts, and displayed a fully working dashboard — then destroyed its own database on close. Every time. With no error message at any point.
+
+A crash would have been easier to find.
+
+The fix separates two categories of path. resource_path() for read-only files shipped inside the bundle (templates, static assets, sigma rules). data_path() for everything the application writes, resolved to %LOCALAPPDATA%\MiniSIEM on Windows and the platform equivalent elsewhere.
+
+A side effect worth noting: running from source now also writes outside the project folder, so siem.db stays out of the repository by construction rather than by .gitignore entry.
+
+Platform constraint
+
+Gunicorn cannot run on Windows — it depends on fork(), which the platform does not provide. The desktop build uses waitress, a production WSGI server that runs on Windows and freezes cleanly. The hosted configuration keeps gunicorn, where the target is Linux.
+
+Security Hardening
+
+The application was audited against a 20-item web application security checklist.
+
+Already implemented (11): environment-variable secrets, gitignored keys, server-side session auth, three-tier RBAC, field whitelisting against mass assignment, hashed passwords, login lockout plus per-IP rate limiting, parameterized queries, enumerated input validation, Jinja2 autoescaping, no upload routes.
+
+Added: session cookie hardening (HttpOnly, SameSite=Lax, env-gated Secure, 8-hour lifetime) and six response security headers applied to every route via after_request — CSP, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy, and HSTS when TLS is enabled.
+
+Not applicable (3): publishable database keys, row-level security and managed bot protection assume a Supabase/Next.js stack. This is SQLite with application-layer RBAC.
+
+A defect caught before shipping
+
+The Content-Security-Policy was first written as script-src 'self' — the textbook-correct directive, which would have broken the entire dashboard. All 18 templates carry inline <script> blocks; the browser would have refused to execute every one of them.
+
+'unsafe-inline' was added back with the tradeoff documented in the source rather than left implicit. This genuinely weakens CSP's XSS containment. The correct fix is per-request nonces, which requires modifying all 18 templates. The remaining directives still hold: no external script origins, no framing, no object/embed, base-uri locked.
+
+Documenting a limitation is not the same as fixing it, and the code says so.
+
+Dependency scanning
+
+pip-audit against the original pins:
+
+flask     3.0.3   PYSEC-2026-2151   → 3.1.3
+requests  2.32.3  PYSEC-2026-1872   → 2.32.4
+requests  2.32.3  PYSEC-2026-2275   → 2.33.0
+
+Resolved. Re-scan clean.
+
+Hosted deployment
+
+Setting SIEM_PUBLIC_DEMO=1 changes two behaviours:
+
+The ingest endpoint is not registered at all — not merely locked down. Its only auth is a shared secret in a plaintext header, and a public /api/ingest/event invites fabricated alerts into a demo everyone is viewing. No endpoint means nothing to attack, no key to leak, no rate limit to tune.
+
+Default credentials are refused. The application will not start unless SIEM_ADMIN_PASSWORD is set to at least 12 characters. A separate Viewer-level demo account is created whose credentials are safe to publish — read-only across dashboards, logs and alerts, with no ability to triage, modify, run SOAR actions, or manage users.
 
 ## Tech stack
 
