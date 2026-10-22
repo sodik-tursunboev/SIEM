@@ -36,6 +36,7 @@ up automatically - no code changes needed to add a new rule.
 
 import os
 import glob
+import re
 import yaml
 
 import paths
@@ -99,8 +100,18 @@ def _selection_matches(selection: dict, log: dict) -> bool:
     """A selection matches if EVERY field in it matches the log (AND logic
     within one selection block - this is standard Sigma behavior)."""
     for field, expected in selection.items():
+        field, _, modifier = field.partition('|')
+        if modifier not in ('', 'endswith'):
+            return False
         actual_field = FIELD_ALIASES.get(field, field.lower())
         actual_value = log.get(actual_field)
+
+        # Both collectors preserve the named share before truncating message.
+        # Read that field only: a path mentioned in another field is not evidence
+        # that the accessed share itself was administrative.
+        if field == 'ShareName' and actual_value is None:
+            match = re.search(r'(?:^|\s\|\s)ShareName=([^\r\n|]+)', str(log.get('message', '')))
+            actual_value = match.group(1).strip() if match else None
 
         if actual_value is None:
             return False
@@ -113,7 +124,9 @@ def _selection_matches(selection: dict, log: dict) -> bool:
             exp_str = str(exp).lower()
             actual_str = str(actual_value).lower()
             # Sigma's '*wildcard*' convention -> substring match; otherwise exact
-            if exp_str.startswith("*") and exp_str.endswith("*") and len(exp_str) > 1:
+            if modifier == 'endswith':
+                matched = actual_str.endswith(exp_str)
+            elif exp_str.startswith("*") and exp_str.endswith("*") and len(exp_str) > 1:
                 matched = exp_str.strip("*") in actual_str
             elif str(exp).isdigit() or isinstance(exp, int):
                 matched = str(actual_value) == str(exp)

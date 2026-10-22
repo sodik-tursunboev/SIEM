@@ -62,6 +62,7 @@ def save_event(source, event_id, event_type, user, source_ip, host, message, tim
 
 # Map raw Windows Event IDs to a friendly event_type label
 EVENT_TYPE_MAP = {
+    5140: "NetworkShareAccessed", 5145: "NetworkShareAccessChecked",
     4624: "SuccessfulLogon",
     4625: "FailedLogon",
     4740: "AccountLockout",
@@ -83,6 +84,7 @@ EVENT_TYPE_MAP = {
 # this was a bug in the first version. These indices come from Microsoft's
 # documented event schemas for each event ID below.
 USER_INSERT_INDEX = {
+    5140: 1, 5145: 1,  # SubjectUserName in the documented file-share schemas
     4624: 5,  # TargetUserName - successful logon
     4625: 5,  # TargetUserName - failed logon
     4720: 4,  # TargetUserName - new account created
@@ -260,6 +262,11 @@ def _parse_event(event, log_type):
         message = win32evtlogutil.SafeFormatMessage(event, log_type)
     except Exception:
         message = " | ".join(inserts) if inserts else ""
+
+    # ShareName is insertion 8 in both Microsoft's 5140 and 5145 schemas.
+    # Preserve it before formatted (and possibly localized) text is capped.
+    if event_id in (5140, 5145) and len(inserts) > 7:
+        message = f"ShareName={inserts[7]} | {message or ''}"
 
     return {
         "source": log_type,

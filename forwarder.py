@@ -90,6 +90,7 @@ LOG_SOURCES = [
 # as a special case so it reaches the SIEM as event_id 4688, matching
 # what rule_suspicious_process / rule_suspicious_powershell check for.
 EVENT_TYPE_MAP = {
+    5140: "NetworkShareAccessed", 5145: "NetworkShareAccessChecked",
     # Security / System (classic Windows auditing)
     4624: "SuccessfulLogon", 4625: "FailedLogon", 4740: "AccountLockout",
     4720: "UserCreated", 4732: "AddedToAdminGroup", 4688: "ProcessCreated",
@@ -133,10 +134,11 @@ IP_FIELD_CANDIDATES = ["IpAddress", "SourceIp", "DestinationIp", "SourceAddress"
 # -enc, etc.) actually searches, so the more of these we include, the
 # more real detection content is available to match against.
 MESSAGE_FIELD_CANDIDATES = [
+    "ShareName",  # Preserve the detection field before the 500-character cap.
     "CommandLine", "NewProcessName", "ProcessName", "Image", "ParentImage",
     "TargetFilename", "ObjectName", "ServiceFileName", "ServiceName",
     "TaskName", "DestinationIp", "DestinationPort", "QueryName",
-    "TargetUserName", "SubjectUserName", "ShareName", "RelativeTargetName",
+    "TargetUserName", "SubjectUserName", "RelativeTargetName",
     "GrantedAccess", "TargetImage", "SourceImage", "StartAddress",
     "TicketEncryptionType", "TicketOptions", "MemberName", "PrivilegeList",
 ]
