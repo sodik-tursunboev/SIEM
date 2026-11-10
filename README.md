@@ -254,6 +254,10 @@ mini_siem/
 - Single-node — no clustering or horizontal scaling
 - Account lockout carries the same tradeoff every lockout policy does: an attacker who knows a valid username could deliberately trigger it as denial-of-service against that user
 
+## Author
+
+Built by **Sodik Tursunboev**. The case study, with screenshots and the detection-validation run, is at [sodik.eu/projects/siem](https://sodik.eu/projects/siem/), and the story of what broke along the way is in [the write-up](https://sodik.eu/writing/i-built-my-own-siem-from-scratch-heres-what-broke-and-what-i-learned-fixing-it/).
+
 ## License
 
-MIT — do whatever you want with it.
+MIT. See [LICENSE](LICENSE).
